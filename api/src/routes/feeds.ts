@@ -120,7 +120,7 @@ feedsRoute.post(
       // 保存文章
       if (parsed.articles.length > 0) {
         const articleValues = parsed.articles.slice(0, 50).map((a) => ({
-          userId,  // 新增：直接关联用户
+          userId,
           feedId: feed.id,
           title: a.title,
           url: a.url,
@@ -129,9 +129,25 @@ feedsRoute.post(
           author: a.author,
           imageUrl: a.imageUrl,
           publishedAt: a.publishedAt,
+          isRead: 0 as any,
+          isStarred: 0 as any,
+          isReadLater: 0 as any,
         }));
 
-        await db.insert(articles).values(articleValues).onConflictDoNothing();
+        try {
+          // Try batch insert first
+          await db.insert(articles).values(articleValues).onConflictDoNothing();
+        } catch (insertErr) {
+          console.error("Batch insert failed, trying individual inserts:", insertErr);
+          // Fall back to individual inserts
+          for (const article of articleValues) {
+            try {
+              await db.insert(articles).values(article).onConflictDoNothing();
+            } catch (e) {
+              console.error("Individual insert failed:", e);
+            }
+          }
+        }
       }
 
       return c.json({ success: true, data: { ...feed, unreadCount: parsed.articles.length } }, 201);

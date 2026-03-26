@@ -137,6 +137,9 @@ opmlRoute.post("/", async (c) => {
               author: a.author,
               imageUrl: a.imageUrl,
               publishedAt: a.publishedAt,
+              isRead: 0 as any,
+              isStarred: 0 as any,
+              isReadLater: 0 as any,
             }))
           ).onConflictDoNothing();
         }

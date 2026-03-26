@@ -78,7 +78,7 @@ refreshRoute.post("/", async (c) => {
         if (newArticles.length > 0) {
           await db.insert(articles).values(
             newArticles.slice(0, 50).map((a) => ({
-              userId,  // 新增：直接关联用户
+              userId,
               feedId: feed.id,
               title: a.title,
               url: a.url,
@@ -88,8 +88,11 @@ refreshRoute.post("/", async (c) => {
               author: a.author,
               imageUrl: a.imageUrl,
               publishedAt: a.publishedAt,
+              isRead: 0 as any,
+              isStarred: 0 as any,
+              isReadLater: 0 as any,
             }))
-          );
+          ).onConflictDoNothing();
         }
 
         // 更新抓取时间和元数据

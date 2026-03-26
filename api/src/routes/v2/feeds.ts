@@ -174,6 +174,9 @@ feedsV2Route.post("/", zValidator("json", createFeedSchema), async (c) => {
         author: a.author,
         imageUrl: a.imageUrl,
         publishedAt: a.publishedAt,
+        isRead: 0 as any,
+        isStarred: 0 as any,
+        isReadLater: 0 as any,
       }));
 
       await db.insert(articles).values(articleValues).onConflictDoNothing();
@@ -405,6 +408,9 @@ feedsV2Route.post("/:id/refresh", async (c) => {
         author: a.author,
         imageUrl: a.imageUrl,
         publishedAt: a.publishedAt,
+        isRead: 0 as any,
+        isStarred: 0 as any,
+        isReadLater: 0 as any,
       }));
 
       await db.insert(articles).values(articleValues).onConflictDoNothing();
