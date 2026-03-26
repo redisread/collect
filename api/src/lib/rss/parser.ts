@@ -50,11 +50,23 @@ function extractFirstImage(html: string): string | null {
   return match ? match[1] : null;
 }
 
-/** 从 RSS/Atom/JSON Feed 解析订阅源数据 */
-export async function parseFeed(feedUrl: string): Promise<ParsedFeed> {
-  const feed = await rssParser.parseURL(feedUrl);
+/** 从 RSS/Atom/JSON Feed XML 解析订阅源数据 */
+export async function parseFeedFromXML(xmlText: string): Promise<ParsedFeed> {
+  const feed = await rssParser.parseString(xmlText);
+  return normalizeFeed(feed);
+}
 
-  const articles: ParsedArticle[] = (feed.items ?? []).map((item) => {
+/** 从 URL 或 XML 解析订阅源数据 */
+export async function parseFeed(feedUrl: string, xmlText?: string): Promise<ParsedFeed> {
+  const feed = xmlText
+    ? await rssParser.parseString(xmlText)
+    : await rssParser.parseURL(feedUrl);
+  return normalizeFeed(feed);
+}
+
+/** 标准化解析后的 Feed 数据 */
+function normalizeFeed(feed: any): ParsedFeed {
+  const articles: ParsedArticle[] = (feed.items ?? []).map((item: any) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const anyItem = item as any;
     const rawContent =
@@ -85,7 +97,7 @@ export async function parseFeed(feedUrl: string): Promise<ParsedFeed> {
   return {
     title: feed.title ?? "未知订阅源",
     description: feed.description ?? "",
-    siteUrl: feed.link ?? feedUrl,
+    siteUrl: feed.link ?? "",
     faviconUrl: null,
     articles,
   };

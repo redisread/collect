@@ -56,7 +56,7 @@ describe("Folders API", () => {
       });
 
       expect(res.status).toBe(200);
-      const json = await res.json();
+      const json = await res.json() as any;
       expect(json.success).toBe(true);
       expect(json.data).toEqual(mockFolders);
     });
@@ -67,7 +67,7 @@ describe("Folders API", () => {
       const res = await app.request("/api/folders");
 
       expect(res.status).toBe(500);
-      const json = await res.json();
+      const json = await res.json() as any;
       expect(json.success).toBe(false);
       expect(json.error).toBe("Database error");
     });
@@ -94,7 +94,7 @@ describe("Folders API", () => {
       });
 
       expect(res.status).toBe(201);
-      const json = await res.json();
+      const json = await res.json() as any;
       expect(json.success).toBe(true);
       expect(json.data.name).toBe("Technology");
     });
@@ -107,7 +107,7 @@ describe("Folders API", () => {
       });
 
       expect(res.status).toBe(400);
-      const json = await res.json();
+      const json = await res.json() as any;
       expect(json.success).toBe(false);
     });
 
@@ -131,7 +131,7 @@ describe("Folders API", () => {
       });
 
       expect(res.status).toBe(201);
-      const json = await res.json();
+      const json = await res.json() as any;
       expect(json.data.color).toBe("#123456");
       expect(json.data.icon).toBe("folder-icon");
     });
@@ -150,7 +150,7 @@ describe("Folders API", () => {
       const res = await app.request("/api/folders/folder-1");
 
       expect(res.status).toBe(200);
-      const json = await res.json();
+      const json = await res.json() as any;
       expect(json.success).toBe(true);
       expect(json.data.id).toBe("folder-1");
     });
@@ -161,7 +161,7 @@ describe("Folders API", () => {
       const res = await app.request("/api/folders/non-existent");
 
       expect(res.status).toBe(404);
-      const json = await res.json();
+      const json = await res.json() as any;
       expect(json.success).toBe(false);
       expect(json.error).toBe("文件夹不存在");
     });
@@ -183,7 +183,7 @@ describe("Folders API", () => {
       });
 
       expect(res.status).toBe(200);
-      const json = await res.json();
+      const json = await res.json() as any;
       expect(json.success).toBe(true);
       expect(json.data.name).toBe("New Name");
     });
@@ -198,7 +198,7 @@ describe("Folders API", () => {
       });
 
       expect(res.status).toBe(404);
-      const json = await res.json();
+      const json = await res.json() as any;
       expect(json.success).toBe(false);
     });
   });
@@ -214,7 +214,7 @@ describe("Folders API", () => {
       });
 
       expect(res.status).toBe(200);
-      const json = await res.json();
+      const json = await res.json() as any;
       expect(json.success).toBe(true);
       expect(json.data.id).toBe("folder-1");
     });
@@ -227,7 +227,7 @@ describe("Folders API", () => {
       });
 
       expect(res.status).toBe(404);
-      const json = await res.json();
+      const json = await res.json() as any;
       expect(json.success).toBe(false);
     });
   });

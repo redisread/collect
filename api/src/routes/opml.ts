@@ -1,10 +1,10 @@
 import { Hono } from "hono";
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and, asc, sql } from "drizzle-orm";
 import { getDb } from "../db";
-import { feeds, folders } from "../db/schema";
+import { feeds, folders, articles } from "../db/schema";
 import { authMiddleware } from "../middleware/auth";
 import { parseOpml, generateOpml } from "../lib/rss/opml";
-import { fetchFeed } from "../lib/rss/fetcher";
+import { RSSFetcher } from "../lib/rss/fetcher";
 import type { CloudflareEnv } from "../types";
 
 const opmlRoute = new Hono<{ Bindings: CloudflareEnv; Variables: { userId: string } }>();
@@ -19,6 +19,12 @@ function getFaviconUrl(siteUrl: string): string {
   } catch {
     return "";
   }
+}
+
+/** 去除 HTML 标签 */
+function stripHtml(html: string): string {
+  if (!html) return "";
+  return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 }
 
 // GET /api/opml — 导出当前用户的 OPML
@@ -97,10 +103,15 @@ opmlRoute.post("/", async (c) => {
         }
 
         // 抓取 Feed
-        const parsed = await fetchFeed(opmlFeed.xmlUrl);
+        const fetcher = new RSSFetcher();
+        const parsed = await fetcher.fetch(opmlFeed.xmlUrl);
         const folderId = opmlFeed.folderName ? folderNameMap.get(opmlFeed.folderName) : null;
 
-        await db.insert(feeds).values({
+        // 计算下次抓取时间
+        const nextFetchAt = new Date();
+        nextFetchAt.setHours(nextFetchAt.getHours() + 1);
+
+        const [newFeed] = await db.insert(feeds).values({
           userId,
           folderId: folderId ?? null,
           title: parsed.title || opmlFeed.title,
@@ -109,7 +120,26 @@ opmlRoute.post("/", async (c) => {
           description: parsed.description,
           faviconUrl: getFaviconUrl(parsed.siteUrl || opmlFeed.xmlUrl),
           lastFetchedAt: new Date().toISOString(),
-        });
+          nextFetchAt: nextFetchAt.toISOString(),
+        }).returning();
+
+        // 导入文章（新增）
+        if (parsed.articles.length > 0) {
+          await db.insert(articles).values(
+            parsed.articles.slice(0, 50).map((a) => ({
+              userId,
+              feedId: newFeed.id,
+              title: a.title,
+              url: a.url,
+              content: a.content,
+              contentText: stripHtml(a.content),
+              summary: a.summary,
+              author: a.author,
+              imageUrl: a.imageUrl,
+              publishedAt: a.publishedAt,
+            }))
+          ).onConflictDoNothing();
+        }
 
         results.push({ url: opmlFeed.xmlUrl, success: true });
       } catch (err) {
