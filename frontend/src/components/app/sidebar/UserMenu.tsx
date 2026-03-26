@@ -1,10 +1,10 @@
-import { useSession, signOut } from "@/lib/auth-client";
+import { authClient } from "@/lib/auth-client";
 
 export function UserMenu() {
-	const { data: session } = useSession();
+	const { data: session } = authClient.useSession();
 
 	const handleSignOut = async () => {
-		await signOut();
+		await authClient.signOut();
 		window.location.href = "/login";
 	};
 

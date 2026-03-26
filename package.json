@@ -15,6 +15,10 @@
     "deploy": "pnpm deploy:api && pnpm deploy:frontend",
     "lint": "pnpm -r lint",
     "type-check": "pnpm -r type-check",
+    "test": "pnpm -r test",
+    "test:api": "pnpm --filter api test",
+    "test:frontend": "pnpm --filter frontend test",
+    "test:mobile": "cd mobile && flutter test",
     "clean": "pnpm -r clean && rm -rf node_modules"
   },
   "devDependencies": {
