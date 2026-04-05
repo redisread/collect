@@ -6,6 +6,9 @@ compatibility_flags = ["nodejs_compat"]
 [observability]
 enabled = true
 
+[triggers]
+crons = ["0 * * * *"]  # 每小时运行一次，检查是否有需要发送的摘要
+
 [[d1_databases]]
 binding = "DB"
 database_name = "collect-db"

@@ -128,8 +128,45 @@ class ApiService {
     return data['data'] as List<dynamic>;
   }
 
+  /// 获取单个文章详情
+  Future<Map<String, dynamic>> getArticle(String id) async {
+    final response = await _dio.get('/api/articles/$id');
+    return response.data as Map<String, dynamic>;
+  }
+
   Future<void> updateArticle(String id, Map<String, dynamic> updates) async {
     await _dio.put('/api/articles/$id', data: updates);
+  }
+
+  /// 搜索文章
+  Future<List<dynamic>> searchArticles(String query, {String? filter}) async {
+    final response = await _dio.get('/api/articles/search', queryParameters: {
+      'q': query,
+      if (filter != null) 'filter': filter,
+    });
+    final data = response.data as Map<String, dynamic>;
+    return data['data'] as List<dynamic>;
+  }
+
+  /// 更新阅读进度
+  Future<void> updateReadingProgress(String articleId, {required int progress}) async {
+    await _dio.put('/api/articles/$articleId/progress', data: {
+      'progress': progress,
+    });
+  }
+
+  /// 提取文章正文
+  Future<Map<String, dynamic>> extractArticle(String id) async {
+    final response = await _dio.post('/api/articles/$id/extract');
+    return response.data as Map<String, dynamic>;
+  }
+
+  /// 批量更新文章
+  Future<void> batchUpdateArticles(String action, List<String> ids) async {
+    await _dio.post('/api/articles/batch', data: {
+      'action': action,
+      'ids': ids,
+    });
   }
 
   // ─── 刷新 ─────────────────────────────────────────────────────────────────

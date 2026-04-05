@@ -1,5 +1,6 @@
 // 前端共用类型定义（对应后端 API 响应结构）
 
+// ==================== Folder Types ====================
 export interface Folder {
   id: string;
   userId: string;
@@ -12,6 +13,7 @@ export interface Folder {
   updatedAt: string | null;
 }
 
+// ==================== Feed Types ====================
 export interface Feed {
   id: string;
   userId: string;
@@ -27,20 +29,64 @@ export interface Feed {
   updatedAt: string | null;
 }
 
+export type FeedWithUnreadCount = Feed & { unreadCount: number };
+
+// ==================== Article Types ====================
 export interface Article {
   id: string;
   feedId: string;
   title: string;
   url: string;
-  content: string | null;
-  summary: string | null;
-  author: string | null;
-  imageUrl: string | null;
-  publishedAt: string | null;
-  isRead: boolean | null;
-  isStarred: boolean | null;
-  isReadLater: boolean | null;
-  createdAt: string | null;
+  content?: string | null;
+  summary?: string | null;
+  author?: string | null;
+  imageUrl?: string | null;
+  publishedAt?: string | null;
+  isRead: boolean;
+  isStarred: boolean;
+  isReadLater: boolean;
+  // 新增字段
+  readingProgress?: number | null;
+  lastReadAt?: string | null;
+  createdAt?: string | null;
 }
 
-export type FeedWithUnreadCount = Feed & { unreadCount: number };
+// 文章列表项（不含全文内容）
+export type ArticleListItem = Omit<Article, "content">;
+
+// ==================== SelectedSource Types ====================
+export type SelectedSource =
+  | { type: "all" }
+  | { type: "starred" }
+  | { type: "read_later" }
+  | { type: "feed"; feedId: string }
+  | { type: "folder"; folderId: string };
+
+// ==================== Translation Types ====================
+export interface TranslationResult {
+  original: string;
+  translated: string;
+  detectedLang?: string;
+}
+
+// ==================== Annotation Types ====================
+export interface TextRange {
+  text: string;
+  start: string;
+  end: string;
+}
+
+export interface Annotation {
+  id: string;
+  articleId: string;
+  type: "highlight" | "note";
+  textRange: TextRange;
+  color?: string;
+  note?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ==================== UI Types ====================
+export type ThemeMode = "light" | "dark" | "system";
+export type ActiveColumn = "sidebar" | "list" | "detail";

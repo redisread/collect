@@ -1,0 +1,4 @@
+
+> @collect/types@0.1.0 type-check /Users/victor/.superset/worktrees/folio/decisive-gallimimus/packages/types
+> tsc --noEmit
+

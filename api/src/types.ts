@@ -5,4 +5,5 @@ export interface CloudflareEnv {
   BETTER_AUTH_SECRET: string;
   BETTER_AUTH_URL: string;
   FRONTEND_URL: string;
+  RESEND_API_KEY?: string;
 }

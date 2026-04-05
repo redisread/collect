@@ -1,8 +1,11 @@
 import { create } from "zustand";
 import type { Folder, FeedWithUnreadCount } from "../types";
 
-const API_BASE = import.meta.env.PUBLIC_API_URL ?? "http://localhost:8787";
+const API_BASE = typeof import.meta !== 'undefined' && (import.meta as unknown as { env: Record<string, string> }).env?.PUBLIC_API_URL
+  ? (import.meta as unknown as { env: Record<string, string> }).env.PUBLIC_API_URL
+  : "http://localhost:8787";
 
+// Re-export SelectedSource from types.ts for convenience
 export type SelectedSource =
 	| { type: "all" }
 	| { type: "starred" }

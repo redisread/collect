@@ -212,4 +212,35 @@ feedsRoute.delete("/:id", async (c) => {
   }
 });
 
+// POST /api/feeds/:id/mark-all-read — 标记某订阅源下所有文章为已读
+feedsRoute.post("/:id/mark-all-read", async (c) => {
+  try {
+    const userId = c.get("userId");
+    const id = c.req.param("id");
+    const db = getDb(c.env.DB);
+
+    // 验证订阅源是否属于当前用户
+    const [existing] = await db
+      .select()
+      .from(feeds)
+      .where(and(eq(feeds.id, id), eq(feeds.userId, userId)));
+    if (!existing) return c.json({ success: false, error: "订阅源不存在" }, 404);
+
+    // 标记该订阅源下所有文章为已读
+    await db
+      .update(articles)
+      .set({ isRead: true })
+      .where(eq(articles.feedId, id));
+
+    return c.json({
+      success: true,
+      data: {
+        feedId: id,
+      },
+    });
+  } catch (err) {
+    return c.json({ success: false, error: err instanceof Error ? err.message : "标记已读失败" }, 500);
+  }
+});
+
 export default feedsRoute;
