@@ -7,6 +7,13 @@ const API_BASE = import.meta.env.PUBLIC_API_URL ?? "http://localhost:8787";
 // 文章列表项（不含全文内容）
 export type ArticleListItem = Omit<Article, "content">;
 
+// 翻译结果类型
+export interface TranslationResult {
+	original: string;
+	translated: string;
+	detectedLang?: string;
+}
+
 interface ArticleStore {
 	articles: ArticleListItem[];
 	selectedArticleId: string | null;
@@ -18,6 +25,10 @@ interface ArticleStore {
 	hasMore: boolean;
 	sortOrder: "desc" | "asc";
 
+	// 翻译相关状态
+	translations: Record<string, TranslationResult>;
+	isTranslating: boolean;
+
 	// Actions
 	fetchArticles: (source: SelectedSource, reset?: boolean) => Promise<void>;
 	fetchMoreArticles: (source: SelectedSource) => Promise<void>;
@@ -27,6 +38,8 @@ interface ArticleStore {
 	toggleReadLater: (articleId: string) => Promise<void>;
 	setSortOrder: (order: "desc" | "asc") => void;
 	navigateArticle: (direction: "prev" | "next") => Promise<void>;
+	translateArticle: (articleId: string, text: string) => Promise<void>;
+	clearTranslation: (articleId: string) => void;
 }
 
 const PAGE_SIZE = 30;
@@ -56,6 +69,10 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 	page: 1,
 	hasMore: false,
 	sortOrder: "desc",
+
+	// 翻译相关状态
+	translations: {},
+	isTranslating: false,
 
 	fetchArticles: async (source, reset = true) => {
 		set({ isLoading: true });
@@ -203,5 +220,36 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 
 		const nextArticle = articles[nextIndex];
 		if (nextArticle) await get().selectArticle(nextArticle.id);
+	},
+
+	translateArticle: async (articleId, text) => {
+		set({ isTranslating: true });
+		try {
+			const res = await fetch(`${API_BASE}/api/translate`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				credentials: "include",
+				body: JSON.stringify({ text, targetLang: "zh-CN" }),
+			});
+			const json = await res.json() as { success: boolean; data: TranslationResult };
+			if (json.success) {
+				set((state) => ({
+					translations: {
+						...state.translations,
+						[articleId]: json.data,
+					},
+				}));
+			}
+		} finally {
+			set({ isTranslating: false });
+		}
+	},
+
+	clearTranslation: (articleId) => {
+		set((state) => {
+			const newTranslations = { ...state.translations };
+			delete newTranslations[articleId];
+			return { translations: newTranslations };
+		});
 	},
 }));

@@ -1,0 +1,45 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": ["**/.env.*local"],
+  "globalEnv": [
+    "NODE_ENV",
+    "API_BASE_URL",
+    "FRONTEND_URL",
+    "BETTER_AUTH_SECRET",
+    "BETTER_AUTH_URL"
+  ],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", ".output/**"]
+    },
+    "lint": {
+      "dependsOn": ["^build"]
+    },
+    "type-check": {
+      "dependsOn": ["^build"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "@collect/shared#build": {
+      "outputs": ["dist/**"]
+    },
+    "api#generate-spec": {
+      "dependsOn": ["@collect/shared#build"],
+      "outputs": ["openapi.json"]
+    },
+    "frontend#build": {
+      "dependsOn": ["@collect/shared#build", "^build"],
+      "outputs": ["dist/**"]
+    },
+    "mobile#generate": {
+      "dependsOn": ["api#generate-spec"],
+      "outputs": ["mobile/lib/generated/**"]
+    },
+    "deploy": {
+      "dependsOn": ["build", "lint", "type-check"]
+    }
+  }
+}

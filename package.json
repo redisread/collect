@@ -4,20 +4,23 @@
   "private": true,
   "description": "Collect RSS Reader - A modern RSS reader built with Hono, Astro, and Flutter",
   "scripts": {
-    "dev": "pnpm --parallel -r dev",
-    "dev:api": "pnpm --filter api dev",
-    "dev:frontend": "pnpm --filter frontend dev",
-    "build": "pnpm -r build",
-    "build:api": "pnpm --filter api build",
-    "build:frontend": "pnpm --filter frontend build",
-    "deploy:api": "pnpm --filter api deploy",
-    "deploy:frontend": "pnpm --filter frontend deploy",
-    "deploy": "pnpm deploy:api && pnpm deploy:frontend",
-    "lint": "pnpm -r lint",
-    "type-check": "pnpm -r type-check",
-    "clean": "pnpm -r clean && rm -rf node_modules"
+    "dev": "turbo dev",
+    "dev:api": "turbo dev --filter=api",
+    "dev:frontend": "turbo dev --filter=frontend",
+    "build": "turbo build",
+    "build:api": "turbo build --filter=api",
+    "build:frontend": "turbo build --filter=frontend",
+    "deploy:api": "turbo deploy --filter=api",
+    "deploy:frontend": "turbo deploy --filter=frontend",
+    "deploy": "turbo deploy",
+    "lint": "turbo lint",
+    "type-check": "turbo type-check",
+    "clean": "turbo clean && rm -rf node_modules",
+    "generate": "./scripts/generate-code.sh",
+    "generate:openapi": "pnpm --filter @collect/shared generate:openapi"
   },
   "devDependencies": {
+    "turbo": "^2.0.0",
     "typescript": "^5.7.4"
   },
   "engines": {

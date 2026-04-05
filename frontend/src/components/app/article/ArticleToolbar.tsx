@@ -7,7 +7,24 @@ interface ArticleToolbarProps {
 }
 
 export function ArticleToolbar({ article }: ArticleToolbarProps) {
-	const { toggleStarred, toggleReadLater } = useArticleStore();
+	const { toggleStarred, toggleReadLater, translateArticle, translations, isTranslating } =
+		useArticleStore();
+
+	const hasTranslation = !!translations[article.id];
+
+	// 获取翻译文本（优先使用 content，没有则使用 summary）
+	const getTranslateText = () => {
+		// 提取纯文本，去除 HTML 标签
+		const text = article.content || article.summary || "";
+		return text.replace(/<[^>]*>/g, "").trim();
+	};
+
+	const handleTranslate = () => {
+		const text = getTranslateText();
+		if (text) {
+			translateArticle(article.id, text);
+		}
+	};
 
 	return (
 		<div className="flex items-center gap-1 px-4 py-2 border-b border-[var(--border-light)] bg-[var(--bg-main)]">
@@ -57,6 +74,33 @@ export function ArticleToolbar({ article }: ArticleToolbarProps) {
 					<path d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z" />
 				</svg>
 				稍后读
+			</button>
+
+			{/* 翻译 */}
+			<button
+				onClick={handleTranslate}
+				disabled={isTranslating}
+				title="翻译为中文"
+				className={cn(
+					"flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs",
+					"transition-all duration-[var(--transition-base)]",
+					isTranslating
+						? "opacity-50 cursor-wait"
+						: hasTranslation
+							? "text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20"
+							: "text-[var(--text-tertiary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]"
+				)}
+			>
+				{isTranslating ? (
+					<svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+						<path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+					</svg>
+				) : (
+					<svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+						<path strokeLinecap="round" strokeLinejoin="round" d="M10.5 21l6-6m-6 6l6-6m-6 6h12" />
+					</svg>
+				)}
+				{isTranslating ? "翻译中" : hasTranslation ? "译文" : "翻译"}
 			</button>
 
 			<div className="flex-1" />

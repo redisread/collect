@@ -7,6 +7,7 @@ import feedsRoute from "./routes/feeds";
 import articlesRoute from "./routes/articles";
 import opmlRoute from "./routes/opml";
 import refreshRoute from "./routes/refresh";
+import translateRoute from "./routes/translate";
 import type { CloudflareEnv } from "./types";
 
 const app = new Hono<{ Bindings: CloudflareEnv }>();
@@ -34,5 +35,6 @@ app.route("/api/feeds", feedsRoute);
 app.route("/api/articles", articlesRoute);
 app.route("/api/opml", opmlRoute);
 app.route("/api/refresh", refreshRoute);
+app.route("/api/translate", translateRoute);
 
 export default app;
