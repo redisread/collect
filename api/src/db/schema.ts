@@ -90,6 +90,23 @@ export const feeds = sqliteTable(
 		feedUrl: text("feed_url").notNull(),
 		description: text("description"),
 		faviconUrl: text("favicon_url"),
+		// 健康度追踪字段
+		healthStatus: text("health_status").default("healthy"), // healthy | degraded | error | stale
+		consecutiveErrors: integer("consecutive_errors").default(0),
+		lastErrorMessage: text("last_error_message"),
+		lastErrorAt: text("last_error_at"),
+		// 增量更新字段
+		lastEtag: text("last_etag"),
+		lastModified: text("last_modified"),
+		contentHash: text("content_hash"),
+		// 调度字段
+		nextFetchAt: text("next_fetch_at"),
+		fetchIntervalMinutes: integer("fetch_interval_minutes").default(60),
+		// 统计字段
+		cachedArticleCount: integer("cached_article_count").default(0),
+		cachedUnreadCount: integer("cached_unread_count").default(0),
+		// 状态字段
+		isActive: integer("is_active", { mode: "boolean" }).default(true),
 		lastFetchedAt: text("last_fetched_at"),
 		sortOrder: integer("sort_order").default(0),
 		createdAt: text("created_at").default(sql`(datetime('now'))`),
@@ -99,6 +116,9 @@ export const feeds = sqliteTable(
 		uniqueIndex("idx_feeds_url_user").on(table.url, table.userId),
 		index("idx_feeds_folder_id").on(table.folderId),
 		index("idx_feeds_user_id").on(table.userId),
+		index("idx_feeds_health_status").on(table.healthStatus),
+		index("idx_feeds_next_fetch_at").on(table.nextFetchAt),
+		index("idx_feeds_active").on(table.isActive),
 	]
 );
 
@@ -109,12 +129,14 @@ export const articles = sqliteTable(
     id: text("id")
       .primaryKey()
       .$defaultFn(() => crypto.randomUUID().replace(/-/g, "").slice(0, 16)),
+    userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
     feedId: text("feed_id")
       .notNull()
       .references(() => feeds.id, { onDelete: "cascade" }),
     title: text("title").notNull(),
     url: text("url").notNull(),
     content: text("content"),
+    contentText: text("content_text"), // 纯文本内容，用于搜索
     summary: text("summary"),
     author: text("author"),
     imageUrl: text("image_url"),
@@ -129,15 +151,19 @@ export const articles = sqliteTable(
     lastReadPosition: text("last_read_position"), // 最后阅读位置（CSS selector 或 anchor）
     lastReadAt: text("last_read_at"), // 最后阅读时间
     estimatedReadTime: integer("estimated_read_time"), // 预估阅读时间（分钟）
+    // 保留策略
+    retentionDate: text("retention_date"), // 保留到此日期
     createdAt: text("created_at").default(sql`(datetime('now'))`),
   },
   (table) => [
     index("idx_articles_feed_id").on(table.feedId),
+    index("idx_articles_user_id").on(table.userId),
     index("idx_articles_published_at").on(table.publishedAt),
     index("idx_articles_is_starred").on(table.isStarred),
     index("idx_articles_is_read_later").on(table.isReadLater),
     index("idx_articles_reading_progress").on(table.readingProgress),
     index("idx_articles_last_read_at").on(table.lastReadAt),
+    index("idx_articles_user_published").on(table.userId, table.publishedAt),
   ]
 );
 
@@ -234,3 +260,106 @@ export interface SmartFolderRules {
   operator: "AND" | "OR";
   conditions: SmartFolderCondition[];
 }
+
+// ─── RSS 同步相关枚举和表 ──────────────────────────────────────────────────────
+
+// 订阅源健康状态
+export enum FeedHealthStatus {
+  HEALTHY = "healthy",       // 正常
+  DEGRADED = "degraded",     // 降级（偶尔失败）
+  ERROR = "error",           // 错误（多次失败）
+  STALE = "stale",           // 过期（长时间未更新）
+}
+
+// 队列状态
+export enum QueueStatus {
+  PENDING = "pending",
+  PROCESSING = "processing",
+  COMPLETED = "completed",
+  FAILED = "failed",
+  CANCELLED = "cancelled",
+}
+
+// 用户偏好表
+export const userPreferences = sqliteTable(
+  "user_preferences",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID().replace(/-/g, "").slice(0, 16)),
+    userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+    // 文章设置
+    maxArticlesPerFeed: integer("max_articles_per_feed").default(100), // 每个订阅源保留的最大文章数
+    articleRetentionDays: integer("article_retention_days").default(30), // 文章保留天数（0=永久）
+    defaultView: text("default_view").default("all"), // "all" | "unread" | "starred" | "read-later"
+    // 刷新设置
+    refreshIntervalMinutes: integer("refresh_interval_minutes").default(30), // 默认刷新间隔
+    // 界面设置
+    theme: text("theme").default("system"), // "light" | "dark" | "system"
+    fontSize: integer("font_size").default(16),
+    showImages: integer("show_images", { mode: "boolean" }).default(true),
+    autoMarkAsRead: integer("auto_mark_as_read", { mode: "boolean" }).default(false),
+    createdAt: text("created_at").default(sql`(datetime('now'))`),
+    updatedAt: text("updated_at").default(sql`(datetime('now'))`),
+  },
+  (table) => [
+    uniqueIndex("idx_user_prefs_user_id").on(table.userId),
+  ]
+);
+
+// RSS 抓取任务队列表
+export const fetchQueue = sqliteTable(
+  "fetch_queue",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID().replace(/-/g, "").slice(0, 16)),
+    feedId: text("feed_id").notNull().references(() => feeds.id, { onDelete: "cascade" }),
+    userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+    status: text("status").notNull().default(QueueStatus.PENDING),
+    priority: integer("priority").default(5), // 1-10，数字越大优先级越高
+    retryCount: integer("retry_count").default(0),
+    scheduledAt: text("scheduled_at").default(sql`(datetime('now'))`),
+    startedAt: text("started_at"),
+    completedAt: text("completed_at"),
+    errorMessage: text("error_message"),
+    result: text("result"), // JSON 字符串存储结果
+    createdAt: text("created_at").default(sql`(datetime('now'))`),
+  },
+  (table) => [
+    index("idx_queue_status").on(table.status),
+    index("idx_queue_scheduled").on(table.scheduledAt),
+    index("idx_queue_feed").on(table.feedId),
+    index("idx_queue_status_scheduled").on(table.status, table.scheduledAt),
+  ]
+);
+
+// 同步状态表（用于多端同步追踪）
+export const syncStates = sqliteTable(
+  "sync_states",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID().replace(/-/g, "").slice(0, 16)),
+    userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+    deviceId: text("device_id"), // 可选，用于区分不同设备
+    lastSyncAt: text("last_sync_at"),
+    lastArticleId: text("last_article_id"), // 最后同步的文章 ID
+    lastFeedId: text("last_feed_id"), // 最后同步的订阅源 ID
+    syncVersion: integer("sync_version").default(1),
+    createdAt: text("created_at").default(sql`(datetime('now'))`),
+    updatedAt: text("updated_at").default(sql`(datetime('now'))`),
+  },
+  (table) => [
+    uniqueIndex("idx_sync_states_user_device").on(table.userId, table.deviceId),
+  ]
+);
+
+// ─── 导出更多类型 ─────────────────────────────────────────────────────────────
+
+export type UserPreference = typeof userPreferences.$inferSelect;
+export type NewUserPreference = typeof userPreferences.$inferInsert;
+export type FetchQueue = typeof fetchQueue.$inferSelect;
+export type NewFetchQueue = typeof fetchQueue.$inferInsert;
+export type SyncState = typeof syncStates.$inferSelect;
+export type NewSyncState = typeof syncStates.$inferInsert;
