@@ -1,0 +1,68 @@
+
+> frontend@0.1.0 type-check /Users/victor/.superset/worktrees/folio/decisive-gallimimus/frontend
+> astro check
+
+01:44:20 [@astrojs/cloudflare] Enabling sessions with Cloudflare KV with the "SESSION" KV binding.
+01:44:20 [@astrojs/cloudflare] If you see the error "Invalid binding `SESSION`" in your build output, you need to add the binding to your wrangler config file.
+01:44:20 [WARN] [adapter] Cloudflare does not support sharp at runtime. However, you can configure `imageService: "compile"` to optimize images with sharp on prerendered pages during build time.
+01:44:21 [content] Syncing content
+01:44:21 [content] Synced content
+01:44:21 [types] Generated 574ms
+01:44:21 [check] Getting diagnostics for Astro files in /Users/victor/.superset/worktrees/folio/decisive-gallimimus/frontend...
+[96msrc/components/app/LoginForm.tsx[0m:[93m10[0m:[93m40[0m - [93mwarning[0m[90m ts(6385): [0m'FormEvent' is deprecated.
+
+[7m10[0m   const handleSubmit = async (e: React.FormEvent) => {
+[7m  [0m [93m                                       ~~~~~~~~~[0m
+
+[96msrc/components/app/RegisterForm.tsx[0m:[93m12[0m:[93m40[0m - [93mwarning[0m[90m ts(6385): [0m'FormEvent' is deprecated.
+
+[7m12[0m   const handleSubmit = async (e: React.FormEvent) => {
+[7m  [0m [93m                                       ~~~~~~~~~[0m
+
+[96msrc/components/app/common/KeyboardShortcuts.tsx[0m:[93m2[0m:[93m1[0m - [93mwarning[0m[90m ts(6133): [0m'useArticleStore' is declared but its value is never read.
+
+[7m2[0m import { useArticleStore } from "@/lib/store/articleStore";
+[7m [0m [93m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+[96msrc/components/app/layout/ArticleList.tsx[0m:[93m7[0m:[93m1[0m - [93mwarning[0m[90m ts(6133): [0m'cn' is declared but its value is never read.
+
+[7m7[0m import { cn } from "@/lib/utils/cn";
+[7m [0m [93m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+[96msrc/components/app/layout/Sidebar.tsx[0m:[93m25[0m:[93m42[0m - [93mwarning[0m[90m ts(6385): [0m'FormEvent' is deprecated.
+
+[7m25[0m  const handleAddFolder = async (e: React.FormEvent) => {
+[7m  [0m [93m                                         ~~~~~~~~~[0m
+[96msrc/components/app/layout/Sidebar.tsx[0m:[93m14[0m:[93m8[0m - [93mwarning[0m[90m ts(6133): [0m'isSidebarCollapsed' is declared but its value is never read.
+
+[7m14[0m  const { isSidebarCollapsed } = useUiStore();
+[7m  [0m [93m       ~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/components/app/layout/Sidebar.tsx[0m:[93m13[0m:[93m10[0m - [93mwarning[0m[90m ts(6133): [0m'folders' is declared but its value is never read.
+
+[7m13[0m  const { folders, feeds, addFolder, isLoading, refresh, fetchFolders, fetchFeeds } = useFeedStore();
+[7m  [0m [93m         ~~~~~~~[0m
+
+[96msrc/components/app/sidebar/AddFeedDialog.tsx[0m:[93m15[0m:[93m39[0m - [93mwarning[0m[90m ts(6385): [0m'FormEvent' is deprecated.
+
+[7m15[0m  const handleSubmit = async (e: React.FormEvent) => {
+[7m  [0m [93m                                      ~~~~~~~~~[0m
+
+[96msrc/lib/store/articleStore.ts[0m:[93m109[0m:[93m32[0m - [93mwarning[0m[90m ts(6133): [0m'reset' is declared but its value is never read.
+
+[7m109[0m  fetchArticles: async (source, reset = true) => {
+[7m   [0m [93m                               ~~~~~[0m
+
+[96msrc/lib/utils/sanitize.ts[0m:[93m14[0m:[93m7[0m - [93mwarning[0m[90m ts(6133): [0m'ALLOWED_ATTRS' is declared but its value is never read.
+
+[7m14[0m const ALLOWED_ATTRS = new Set([
+[7m  [0m [93m      ~~~~~~~~~~~~~[0m
+[96msrc/lib/utils/sanitize.ts[0m:[93m4[0m:[93m7[0m - [93mwarning[0m[90m ts(6133): [0m'ALLOWED_TAGS' is declared but its value is never read.
+
+[7m4[0m const ALLOWED_TAGS = new Set([
+[7m [0m [93m      ~~~~~~~~~~~~[0m
+
+Result (42 files): 
+- 0 errors
+- 0 warnings
+- 11 hints
+

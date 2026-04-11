@@ -1,10 +1,14 @@
-import { authClient } from "@/lib/auth-client";
+import { useAtomValue } from "jotai";
+import { authClient, signOut } from "@/lib/auth-client";
 
 export function UserMenu() {
-	const { data: session } = authClient.useSession();
+	// @ts-expect-error - better-auth useSession returns a Jotai atom
+	const sessionData = useAtomValue(authClient.useSession);
+	// @ts-expect-error - session data shape
+	const session = sessionData?.data;
 
 	const handleSignOut = async () => {
-		await authClient.signOut();
+		await signOut();
 		window.location.href = "/login";
 	};
 

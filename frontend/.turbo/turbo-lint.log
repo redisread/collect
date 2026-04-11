@@ -1,0 +1,7 @@
+
+> frontend@0.1.0 lint /Users/victor/.superset/worktrees/folio/decisive-gallimimus/frontend
+> tsc --noEmit
+
+src/components/app/sidebar/UserMenu.tsx(4,28): error TS2349: This expression is not callable.
+  No constituent of type 'Atom<{ data: { user: StripEmptyObjects<{ id: string; createdAt: Date; updatedAt: Date; email: string; emailVerified: boolean; name: string; image?: string | null | undefined; }>; session: StripEmptyObjects<...>; } | null; error: BetterFetchError | null; isPending: boolean; isRefetching: boolean; refetch: (queryParam...' is callable.
+ ELIFECYCLE  Command failed with exit code 2.

@@ -1,86 +1,76 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
-import type { CloudflareEnv } from "./types";
-
-// Existing routes (v1)
 import authRoute from "./routes/auth";
 import foldersRoute from "./routes/folders";
 import feedsRoute from "./routes/feeds";
 import articlesRoute from "./routes/articles";
 import opmlRoute from "./routes/opml";
 import refreshRoute from "./routes/refresh";
-
-// New v2 routes
-import v2Route from "./routes/v2";
-
-// Middleware
-import { metricsMiddleware } from "./middleware/metrics";
-
-// Cron handlers
-import { handleCron } from "./cron/handlers";
+import translateRoute from "./routes/translate";
+import settingsRoute from "./routes/settings";
+import smartFoldersRoute from "./routes/smart-folders";
+import annotationsRoute from "./routes/annotations";
+import statsRoute from "./routes/stats";
+import { sendPendingDigests } from "./lib/scheduler/digest";
+import type { CloudflareEnv } from "./types";
 
 const app = new Hono<{ Bindings: CloudflareEnv }>();
 
-// Global middleware
+// 中间件
 app.use("*", logger());
-app.use("*", metricsMiddleware);
 app.use(
   "*",
   cors({
-    origin: (origin) => origin,
+    origin: (origin) => origin, // 允许所有来源（生产环境应限制）
     credentials: true,
-    allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowHeaders: ["Content-Type", "Authorization", "Cookie"],
     exposeHeaders: ["Set-Cookie"],
   })
 );
 
-// Health check
-app.get("/", (c) =>
-  c.json({
-    status: "ok",
-    service: "collect-api",
-    version: "2.0.0",
-  })
-);
+// 健康检查
+app.get("/", (c) => c.json({ status: "ok", service: "collect-api" }));
 
-// API v1 routes (backward compatibility)
+// 路由挂载
 app.route("/api/auth", authRoute);
 app.route("/api/folders", foldersRoute);
 app.route("/api/feeds", feedsRoute);
 app.route("/api/articles", articlesRoute);
 app.route("/api/opml", opmlRoute);
 app.route("/api/refresh", refreshRoute);
+app.route("/api/translate", translateRoute);
+app.route("/api/settings", settingsRoute);
+app.route("/api/smart-folders", smartFoldersRoute);
+app.route("/api/annotations", annotationsRoute);
+app.route("/api/stats", statsRoute);
 
-// API v2 routes
-app.route("/api/v2", v2Route);
-
-// 404 handler
-app.notFound((c) => c.json({ success: false, error: "Not found" }, 404));
-
-// Error handler
-app.onError((err, c) => {
-  console.error("Unhandled error:", err);
-  return c.json(
-    {
-      success: false,
-      error: err instanceof Error ? err.message : "Internal server error",
-    },
-    500
-  );
-});
-
-// Export Hono app for Cloudflare Workers
+// Cron 任务处理器
 export default {
-  fetch: app.fetch,
-
-  // Cron trigger handler
-  async scheduled(
-    event: ScheduledEvent,
-    env: CloudflareEnv,
-    ctx: ExecutionContext
-  ): Promise<void> {
-    ctx.waitUntil(handleCron(event, env, ctx));
+  async fetch(request: Request, env: CloudflareEnv) {
+    return app.fetch(request, env);
+  },
+  async scheduled(event: ScheduledEvent, env: CloudflareEnv) {
+    console.log("[Cron] Scheduled event triggered:", event.cron);
+    await handleScheduledTasks(env);
   },
 };
+
+/**
+ * 处理定时任务
+ */
+async function handleScheduledTasks(env: CloudflareEnv) {
+  console.log("[Cron] Starting scheduled tasks...");
+
+  try {
+    // 发送邮件摘要
+    const result = await sendPendingDigests(env);
+    console.log("[Cron] Digest task completed:", result);
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    console.error("[Cron] Error in scheduled tasks:", errorMessage);
+  }
+
+  console.log("[Cron] All scheduled tasks completed");
+}

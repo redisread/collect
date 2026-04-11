@@ -1,11 +1,18 @@
 import { create } from "zustand";
-import type { Article } from "../types";
-import type { SelectedSource } from "./feedStore";
+import type {
+	Article,
+	ArticleListItem,
+	TranslationResult,
+	Annotation,
+	SelectedSource,
+} from "../types";
 
-const API_BASE = import.meta.env.PUBLIC_API_URL ?? "http://localhost:8787";
+// Re-export types for backward compatibility
+export type { ArticleListItem, TranslationResult, Annotation };
 
-// 文章列表项（不含全文内容）
-export type ArticleListItem = Omit<Article, "content">;
+const API_BASE = typeof import.meta !== 'undefined' && (import.meta as unknown as { env: Record<string, string> }).env?.PUBLIC_API_URL
+  ? (import.meta as unknown as { env: Record<string, string> }).env.PUBLIC_API_URL
+  : "http://localhost:8787";
 
 interface ArticleStore {
 	articles: ArticleListItem[];
@@ -13,24 +20,49 @@ interface ArticleStore {
 	selectedArticle: Article | null;
 	isLoading: boolean;
 	isLoadingDetail: boolean;
-	originalContent: string | null; // 抓取的原文内容
-	isLoadingOriginal: boolean;
 	total: number;
 	page: number;
 	hasMore: boolean;
 	sortOrder: "desc" | "asc";
 
-	// Actions
+	// 翻译相关状态
+	translations: Record<string, TranslationResult>;
+	isTranslating: boolean;
+
+	// 提取相关状态
+	isExtracting: boolean;
+
+	// 搜索相关状态
+	searchQuery: string;
+	searchResults: ArticleListItem[];
+	isSearching: boolean;
+
+	// 标注相关状态
+	annotations: Annotation[];
+
+	// 方法
 	fetchArticles: (source: SelectedSource, reset?: boolean) => Promise<void>;
 	fetchMoreArticles: (source: SelectedSource) => Promise<void>;
 	selectArticle: (articleId: string | null) => Promise<void>;
 	markRead: (articleId: string, isRead: boolean) => Promise<void>;
+	toggleRead: (articleId: string) => Promise<void>;
 	toggleStarred: (articleId: string) => Promise<void>;
 	toggleReadLater: (articleId: string) => Promise<void>;
-	setSortOrder: (order: "desc" | "asc") => void;
-	navigateArticle: (direction: "prev" | "next") => Promise<void>;
-	fetchArticleContent: (url: string) => Promise<void>;
-	clearOriginalContent: () => void;
+	setSortOrder: (sortOrder: "desc" | "asc") => void;
+	navigateArticle: (direction: "next" | "prev") => Promise<void>;
+	translateArticle: (articleId: string, text: string) => Promise<void>;
+	clearTranslation: (articleId: string) => void;
+	extractArticle: (articleId: string) => Promise<void>;
+	batchUpdateArticles: (action: "read" | "unread" | "star" | "unstar", articleIds: string[]) => Promise<void>;
+	setSearchQuery: (query: string) => void;
+	performSearch: (query: string) => Promise<void>;
+	clearSearch: () => void;
+	saveReadingProgress: (articleId: string, progress: number) => Promise<void>;
+	getReadingProgress: (articleId: string) => Promise<number | null>;
+	loadAnnotations: (articleId: string) => Promise<void>;
+	createAnnotation: (annotation: Omit<Annotation, "id" | "createdAt" | "updatedAt">) => Promise<void>;
+	updateAnnotation: (id: string, data: Partial<Annotation>) => Promise<void>;
+	deleteAnnotation: (id: string) => Promise<void>;
 }
 
 const PAGE_SIZE = 30;
@@ -56,12 +88,23 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 	selectedArticle: null,
 	isLoading: false,
 	isLoadingDetail: false,
-	originalContent: null,
-	isLoadingOriginal: false,
+	isExtracting: false,
 	total: 0,
 	page: 1,
 	hasMore: false,
 	sortOrder: "desc",
+
+	// 翻译相关状态
+	translations: {},
+	isTranslating: false,
+
+	// 搜索相关状态
+	searchQuery: "",
+	searchResults: [],
+	isSearching: false,
+
+	// 标注相关状态
+	annotations: [],
 
 	fetchArticles: async (source, reset = true) => {
 		set({ isLoading: true });
@@ -211,27 +254,231 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 		if (nextArticle) await get().selectArticle(nextArticle.id);
 	},
 
-	fetchArticleContent: async (url) => {
-		set({ isLoadingOriginal: true, originalContent: null });
+	translateArticle: async (articleId, text) => {
+		set({ isTranslating: true });
 		try {
-			const res = await fetch(`${API_BASE}/api/v2/articles/fetch-content`, {
+			const res = await fetch(`${API_BASE}/api/translate`, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				credentials: "include",
-				body: JSON.stringify({ url }),
+				body: JSON.stringify({ text, targetLang: "zh-CN" }),
 			});
-			const json = await res.json() as { success: boolean; data?: { content: string }; error?: string };
-			if (json.success && json.data) {
-				set({ originalContent: json.data.content });
-			} else {
-				console.error("Failed to fetch article content:", json.error);
+			const json = await res.json() as { success: boolean; data: TranslationResult };
+			if (json.success) {
+				set((state) => ({
+					translations: {
+						...state.translations,
+						[articleId]: json.data,
+					},
+				}));
 			}
-		} catch (err) {
-			console.error("Error fetching article content:", err);
 		} finally {
-			set({ isLoadingOriginal: false });
+			set({ isTranslating: false });
 		}
 	},
 
-	clearOriginalContent: () => set({ originalContent: null }),
+	clearTranslation: (articleId) => {
+		set((state) => {
+			const newTranslations = { ...state.translations };
+			delete newTranslations[articleId];
+			return { translations: newTranslations };
+		});
+	},
+
+	toggleRead: async (articleId) => {
+		const article = get().articles.find((a) => a.id === articleId);
+		const newValue = !article?.isRead;
+		await get().markRead(articleId, newValue);
+	},
+
+	extractArticle: async (articleId) => {
+		set({ isExtracting: true });
+		try {
+			const res = await fetch(`${API_BASE}/api/articles/${articleId}/extract`, {
+				method: "POST",
+				credentials: "include",
+			});
+			const json = await res.json() as { success: boolean; data: Article };
+			if (json.success) {
+				set((state) => ({
+					selectedArticle:
+						state.selectedArticle?.id === articleId
+							? { ...state.selectedArticle, content: json.data.content }
+							: state.selectedArticle,
+					articles: state.articles.map((a) =>
+						a.id === articleId && json.data.summary
+							? { ...a, summary: json.data.summary }
+							: a
+					),
+				}));
+			}
+		} finally {
+			set({ isExtracting: false });
+		}
+	},
+
+	batchUpdateArticles: async (action, articleIds) => {
+		const updates: Record<string, boolean> = {};
+		switch (action) {
+			case "read":
+				updates.isRead = true;
+				break;
+			case "unread":
+				updates.isRead = false;
+				break;
+			case "star":
+				updates.isStarred = true;
+				break;
+			case "unstar":
+				updates.isStarred = false;
+				break;
+		}
+
+		// 乐观更新
+		set((state) => ({
+			articles: state.articles.map((a) =>
+				articleIds.includes(a.id) ? { ...a, ...updates } : a
+			),
+			selectedArticle:
+				state.selectedArticle && articleIds.includes(state.selectedArticle.id)
+					? { ...state.selectedArticle, ...updates }
+					: state.selectedArticle,
+		}));
+
+		// 调用批量更新 API
+		await fetch(`${API_BASE}/api/articles/batch`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			credentials: "include",
+			body: JSON.stringify({ action, articleIds }),
+		});
+	},
+
+	// 搜索相关方法
+	setSearchQuery: (query) => set({ searchQuery: query }),
+
+	performSearch: async (query) => {
+		if (!query.trim()) {
+			set({ searchResults: [], isSearching: false });
+			return;
+		}
+
+		set({ isSearching: true });
+		try {
+			const params = new URLSearchParams({ q: query.trim() });
+			const res = await fetch(`${API_BASE}/api/articles/search?${params.toString()}`, {
+				credentials: "include",
+			});
+			const json = await res.json() as {
+				success: boolean;
+				data: { articles: ArticleListItem[] };
+			};
+			if (json.success) {
+				set({ searchResults: json.data.articles });
+			}
+		} finally {
+			set({ isSearching: false });
+		}
+	},
+
+	clearSearch: () => set({ searchQuery: "", searchResults: [], isSearching: false }),
+
+	// 阅读进度方法
+	saveReadingProgress: async (articleId, progress) => {
+		try {
+			await fetch(`${API_BASE}/api/articles/${articleId}/progress`, {
+				method: "PUT",
+				headers: { "Content-Type": "application/json" },
+				credentials: "include",
+				body: JSON.stringify({ progress }),
+			});
+		} catch (error) {
+			console.error("Failed to save reading progress:", error);
+		}
+	},
+
+	getReadingProgress: async (articleId) => {
+		try {
+			const res = await fetch(`${API_BASE}/api/articles/${articleId}/progress`, {
+				credentials: "include",
+			});
+			const json = await res.json() as { success: boolean; data: { progress: number } };
+			if (json.success) {
+				return json.data.progress;
+			}
+			return null;
+		} catch (error) {
+			console.error("Failed to get reading progress:", error);
+			return null;
+		}
+	},
+
+	// 标注相关方法
+	loadAnnotations: async (articleId) => {
+		try {
+			const res = await fetch(`${API_BASE}/api/articles/${articleId}/annotations`, {
+				credentials: "include",
+			});
+			const json = await res.json() as { success: boolean; data: { annotations: Annotation[] } };
+			if (json.success) {
+				set({ annotations: json.data.annotations });
+			}
+		} catch (error) {
+			console.error("Failed to load annotations:", error);
+		}
+	},
+
+	createAnnotation: async (annotation) => {
+		try {
+			const res = await fetch(`${API_BASE}/api/annotations`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				credentials: "include",
+				body: JSON.stringify(annotation),
+			});
+			const json = await res.json() as { success: boolean; data: Annotation };
+			if (json.success) {
+				set((state) => ({
+					annotations: [...state.annotations, json.data],
+				}));
+			}
+		} catch (error) {
+			console.error("Failed to create annotation:", error);
+		}
+	},
+
+	updateAnnotation: async (id, data) => {
+		try {
+			const res = await fetch(`${API_BASE}/api/annotations/${id}`, {
+				method: "PUT",
+				headers: { "Content-Type": "application/json" },
+				credentials: "include",
+				body: JSON.stringify(data),
+			});
+			const json = await res.json() as { success: boolean; data: Annotation };
+			if (json.success) {
+				set((state) => ({
+					annotations: state.annotations.map((a) =>
+						a.id === id ? { ...a, ...json.data } : a
+					),
+				}));
+			}
+		} catch (error) {
+			console.error("Failed to update annotation:", error);
+		}
+	},
+
+	deleteAnnotation: async (id) => {
+		try {
+			await fetch(`${API_BASE}/api/annotations/${id}`, {
+				method: "DELETE",
+				credentials: "include",
+			});
+			set((state) => ({
+				annotations: state.annotations.filter((a) => a.id !== id),
+			}));
+		} catch (error) {
+			console.error("Failed to delete annotation:", error);
+		}
+	},
 }));

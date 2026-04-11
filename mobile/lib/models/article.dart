@@ -11,6 +11,7 @@ class Article {
   final bool isRead;
   final bool isStarred;
   final bool isReadLater;
+  final int? readingProgress; // 0-100 的阅读进度
 
   const Article({
     required this.id,
@@ -25,6 +26,7 @@ class Article {
     this.isRead = false,
     this.isStarred = false,
     this.isReadLater = false,
+    this.readingProgress,
   });
 
   factory Article.fromJson(Map<String, dynamic> json) => Article(
@@ -40,19 +42,38 @@ class Article {
         isRead: json['isRead'] as bool? ?? false,
         isStarred: json['isStarred'] as bool? ?? false,
         isReadLater: json['isReadLater'] as bool? ?? false,
+        readingProgress: json['readingProgress'] as int?,
       );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'feedId': feedId,
+        'title': title,
+        'url': url,
+        'content': content,
+        'summary': summary,
+        'author': author,
+        'imageUrl': imageUrl,
+        'publishedAt': publishedAt,
+        'isRead': isRead,
+        'isStarred': isStarred,
+        'isReadLater': isReadLater,
+        'readingProgress': readingProgress,
+      };
 
   Article copyWith({
     bool? isRead,
     bool? isStarred,
     bool? isReadLater,
+    int? readingProgress,
+    String? content,
   }) =>
       Article(
         id: id,
         feedId: feedId,
         title: title,
         url: url,
-        content: content,
+        content: content ?? this.content,
         summary: summary,
         author: author,
         imageUrl: imageUrl,
@@ -60,5 +81,6 @@ class Article {
         isRead: isRead ?? this.isRead,
         isStarred: isStarred ?? this.isStarred,
         isReadLater: isReadLater ?? this.isReadLater,
+        readingProgress: readingProgress ?? this.readingProgress,
       );
 }

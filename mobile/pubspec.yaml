@@ -26,6 +26,17 @@ dependencies:
 
   # WebView（文章阅读）
   webview_flutter: ^4.10.0
+  webview_flutter_wkwebview: ^3.16.0
+
+  # URL 启动器（打开浏览器）
+  url_launcher: ^6.3.1
+
+  # 分享功能
+  share_plus: ^10.1.4
+
+  # 本地数据库（离线缓存）
+  sqflite: ^2.4.1
+  path_provider: ^2.1.2
 
   # 图片缓存
   cached_network_image: ^3.4.1

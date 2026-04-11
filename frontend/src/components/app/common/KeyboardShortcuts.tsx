@@ -3,9 +3,8 @@ import { useArticleStore } from "@/lib/store/articleStore";
 import { useFeedStore } from "@/lib/store/feedStore";
 import { useUiStore } from "@/lib/store/uiStore";
 
+// 基础键盘快捷键（与 VimShortcuts 互补，不冲突）
 export function KeyboardShortcuts() {
-	const { navigateArticle, toggleStarred, toggleReadLater, selectedArticleId, selectedArticle } =
-		useArticleStore();
 	const { refresh } = useFeedStore();
 	const { setActiveColumn, setSearchQuery } = useUiStore();
 
@@ -21,88 +20,46 @@ export function KeyboardShortcuts() {
 				return;
 			}
 
+			// 基础快捷键（不与 Vim 快捷键冲突）
 			switch (e.key) {
-				case "j":
-				case "J":
-					e.preventDefault();
-					navigateArticle("next");
-					break;
-				case "k":
-				case "K":
-					e.preventDefault();
-					navigateArticle("prev");
-					break;
-				case "s":
-				case "S":
-					if (selectedArticleId) {
-						e.preventDefault();
-						toggleStarred(selectedArticleId);
-					}
-					break;
-				case "l":
-				case "L":
-					if (selectedArticleId) {
-						e.preventDefault();
-						toggleReadLater(selectedArticleId);
-					}
-					break;
-				case "v":
-				case "V":
-					if (selectedArticle?.url) {
-						e.preventDefault();
-						window.open(selectedArticle.url, "_blank", "noopener,noreferrer");
-					}
-					break;
 				case "r":
 				case "R":
+					// 刷新（不拦截 Ctrl+R 浏览器刷新）
 					if (!e.metaKey && !e.ctrlKey) {
 						e.preventDefault();
 						refresh();
 					}
 					break;
-				case "/":
-					e.preventDefault();
-					setActiveColumn("sidebar");
-					setSearchQuery("");
-					// 聚焦搜索框
-					setTimeout(() => {
-						const searchInput = document.querySelector<HTMLInputElement>("[data-search-input]");
-						searchInput?.focus();
-					}, 50);
-					break;
+
 				case "1":
 					if (!e.metaKey && !e.ctrlKey) {
 						e.preventDefault();
 						setActiveColumn("sidebar");
 					}
 					break;
+
 				case "2":
 					if (!e.metaKey && !e.ctrlKey) {
 						e.preventDefault();
 						setActiveColumn("list");
 					}
 					break;
+
 				case "3":
 					if (!e.metaKey && !e.ctrlKey) {
 						e.preventDefault();
 						setActiveColumn("detail");
 					}
 					break;
+
+				// 注意：导航快捷键 (j/k)、操作快捷键 (m/s/l/o/e/t/v)、搜索 (/) 和帮助 (?) 
+				// 都由 VimShortcuts 组件处理
 			}
 		};
 
 		window.addEventListener("keydown", handleKeyDown);
 		return () => window.removeEventListener("keydown", handleKeyDown);
-	}, [
-		navigateArticle,
-		toggleStarred,
-		toggleReadLater,
-		selectedArticleId,
-		selectedArticle,
-		refresh,
-		setActiveColumn,
-		setSearchQuery,
-	]);
+	}, [refresh, setActiveColumn, setSearchQuery]);
 
 	return null;
 }
