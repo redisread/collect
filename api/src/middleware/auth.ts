@@ -1,5 +1,8 @@
 import { createMiddleware } from "hono/factory";
 import { createAuth } from "../lib/auth";
+import { getDb } from "../db";
+import { session, user } from "../db/schema";
+import { eq, and, gt } from "drizzle-orm";
 import type { CloudflareEnv } from "../types";
 
 type Variables = {
@@ -11,38 +14,53 @@ export const authMiddleware = createMiddleware<{
   Bindings: CloudflareEnv;
   Variables: Variables;
 }>(async (c, next) => {
-  const auth = createAuth(
-    c.env.DB,
-    c.env.BETTER_AUTH_SECRET,
-    c.env.BETTER_AUTH_URL
-  );
-
   // Try to get session from headers (supports both cookie and bearer token)
   const headers = c.req.raw.headers;
   const authHeader = headers.get("Authorization");
 
-  // If Bearer token provided, convert to cookie format for Better Auth
-  if (authHeader?.startsWith("Bearer ")) {
-    const token = authHeader.slice(7);
-    // Create new headers with cookie
-    const newHeaders = new Headers(headers);
-    newHeaders.set("Cookie", `better-auth.session-token=${token}`);
+  let token = "";
 
-    const session = await auth.api.getSession({ headers: newHeaders });
-    if (session?.user) {
-      c.set("userId", session.user.id);
-      await next();
-      return;
+  if (authHeader?.startsWith("Bearer ")) {
+    token = authHeader.slice(7);
+  } else {
+    // Try to get from cookie
+    const cookieHeader = headers.get("cookie");
+    if (cookieHeader) {
+      const match = cookieHeader.match(/better-auth\.session_token=([^;]+)/);
+      if (match) {
+        token = match[1];
+      }
     }
   }
 
-  // Fall back to cookie-based session
-  const session = await auth.api.getSession({ headers });
-
-  if (!session?.user) {
+  if (!token) {
     return c.json({ success: false, error: "Unauthorized" }, 401);
   }
 
-  c.set("userId", session.user.id);
-  await next();
+  // Direct database query to validate token
+  const db = getDb(c.env.DB);
+
+  try {
+    // Use raw SQL to avoid drizzle-orm timestamp conversion issues
+    const result = await db
+      .select({
+        id: session.id,
+        userId: session.userId,
+      })
+      .from(session)
+      .where(eq(session.token, token))
+      .limit(1);
+
+    if (!result.length) {
+      return c.json({ success: false, error: "Unauthorized" }, 401);
+    }
+
+    const sessionRow = result[0];
+    console.log("Found session for user:", sessionRow.userId);
+    c.set("userId", sessionRow.userId);
+    await next();
+  } catch (err) {
+    console.error("Auth error:", err);
+    return c.json({ success: false, error: "Unauthorized" }, 401);
+  }
 });

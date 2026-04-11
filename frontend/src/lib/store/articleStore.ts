@@ -13,6 +13,8 @@ interface ArticleStore {
 	selectedArticle: Article | null;
 	isLoading: boolean;
 	isLoadingDetail: boolean;
+	originalContent: string | null; // 抓取的原文内容
+	isLoadingOriginal: boolean;
 	total: number;
 	page: number;
 	hasMore: boolean;
@@ -27,6 +29,8 @@ interface ArticleStore {
 	toggleReadLater: (articleId: string) => Promise<void>;
 	setSortOrder: (order: "desc" | "asc") => void;
 	navigateArticle: (direction: "prev" | "next") => Promise<void>;
+	fetchArticleContent: (url: string) => Promise<void>;
+	clearOriginalContent: () => void;
 }
 
 const PAGE_SIZE = 30;
@@ -52,6 +56,8 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 	selectedArticle: null,
 	isLoading: false,
 	isLoadingDetail: false,
+	originalContent: null,
+	isLoadingOriginal: false,
 	total: 0,
 	page: 1,
 	hasMore: false,
@@ -204,4 +210,28 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 		const nextArticle = articles[nextIndex];
 		if (nextArticle) await get().selectArticle(nextArticle.id);
 	},
+
+	fetchArticleContent: async (url) => {
+		set({ isLoadingOriginal: true, originalContent: null });
+		try {
+			const res = await fetch(`${API_BASE}/api/v2/articles/fetch-content`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				credentials: "include",
+				body: JSON.stringify({ url }),
+			});
+			const json = await res.json() as { success: boolean; data?: { content: string }; error?: string };
+			if (json.success && json.data) {
+				set({ originalContent: json.data.content });
+			} else {
+				console.error("Failed to fetch article content:", json.error);
+			}
+		} catch (err) {
+			console.error("Error fetching article content:", err);
+		} finally {
+			set({ isLoadingOriginal: false });
+		}
+	},
+
+	clearOriginalContent: () => set({ originalContent: null }),
 }));

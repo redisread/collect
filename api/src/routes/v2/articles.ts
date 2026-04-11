@@ -6,6 +6,7 @@ import { getDb } from "../../db";
 import { articles, feeds, folders } from "../../db/schema";
 import { authMiddleware } from "../../middleware/auth";
 import { CacheManager } from "../../lib/cache/CacheManager";
+import { fetchArticleContent } from "../../lib/content/FetchContentService";
 import type { CloudflareEnv } from "../../types";
 
 const articlesV2Route = new Hono<{
@@ -428,5 +429,40 @@ articlesV2Route.put("/:id", async (c) => {
     );
   }
 });
+
+/**
+ * POST /api/v2/articles/fetch-content
+ * Fetch and extract content from a URL
+ */
+articlesV2Route.post(
+  "/fetch-content",
+  authMiddleware,
+  zValidator(
+    "json",
+    z.object({
+      url: z.string().url(),
+    })
+  ),
+  async (c) => {
+    try {
+      const { url } = c.req.valid("json");
+
+      const result = await fetchArticleContent(url);
+
+      return c.json({
+        success: true,
+        data: result,
+      });
+    } catch (err) {
+      return c.json(
+        {
+          success: false,
+          error: err instanceof Error ? err.message : "获取内容失败",
+        },
+        500
+      );
+    }
+  }
+);
 
 export default articlesV2Route;
