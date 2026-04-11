@@ -1,5 +1,5 @@
 -- Better Auth 四张表
-CREATE TABLE `user` (
+CREATE TABLE IF NOT EXISTS `user` (
   `id` text PRIMARY KEY NOT NULL,
   `name` text NOT NULL,
   `email` text NOT NULL UNIQUE,
@@ -9,7 +9,7 @@ CREATE TABLE `user` (
   `updated_at` integer NOT NULL
 );
 
-CREATE TABLE `session` (
+CREATE TABLE IF NOT EXISTS `session` (
   `id` text PRIMARY KEY NOT NULL,
   `expires_at` integer NOT NULL,
   `token` text NOT NULL UNIQUE,
@@ -20,7 +20,7 @@ CREATE TABLE `session` (
   `user_id` text NOT NULL REFERENCES `user`(`id`) ON DELETE CASCADE
 );
 
-CREATE TABLE `account` (
+CREATE TABLE IF NOT EXISTS `account` (
   `id` text PRIMARY KEY NOT NULL,
   `account_id` text NOT NULL,
   `provider_id` text NOT NULL,
@@ -36,7 +36,7 @@ CREATE TABLE `account` (
   `updated_at` integer NOT NULL
 );
 
-CREATE TABLE `verification` (
+CREATE TABLE IF NOT EXISTS `verification` (
   `id` text PRIMARY KEY NOT NULL,
   `identifier` text NOT NULL,
   `value` text NOT NULL,
@@ -45,14 +45,14 @@ CREATE TABLE `verification` (
   `updated_at` integer
 );
 
--- 现有表加 user_id 字段
+-- 现有表加 user_id 字段（如果还没有）
 ALTER TABLE `folders` ADD COLUMN `user_id` text NOT NULL DEFAULT '' REFERENCES `user`(`id`) ON DELETE CASCADE;
 ALTER TABLE `feeds` ADD COLUMN `user_id` text NOT NULL DEFAULT '' REFERENCES `user`(`id`) ON DELETE CASCADE;
 
 -- feeds.url 改为用户维度唯一（移除旧的全局唯一索引，创建复合唯一索引）
 DROP INDEX IF EXISTS `feeds_url_unique`;
-CREATE UNIQUE INDEX `idx_feeds_url_user` ON `feeds`(`url`, `user_id`);
+CREATE UNIQUE INDEX IF NOT EXISTS `idx_feeds_url_user` ON `feeds`(`url`, `user_id`);
 
 -- 辅助索引
-CREATE INDEX `idx_folders_user_id` ON `folders`(`user_id`);
-CREATE INDEX `idx_feeds_user_id` ON `feeds`(`user_id`);
+CREATE INDEX IF NOT EXISTS `idx_folders_user_id` ON `folders`(`user_id`);
+CREATE INDEX IF NOT EXISTS `idx_feeds_user_id` ON `feeds`(`user_id`);
