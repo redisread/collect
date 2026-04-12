@@ -12,12 +12,12 @@ crons = ["0 * * * *"]  # 每小时运行一次，检查是否有需要发送的�
 [[d1_databases]]
 binding = "DB"
 database_name = "collect-db"
-database_id = "local-collect-db"
+database_id = "c795f10a-e138-4b9d-bed4-07c8a0a2117a"
 migrations_dir = "drizzle/migrations"
 
 [[kv_namespaces]]
 binding = "COLLECT_KV"
-id = "local-collect-kv"
+id = "c11fb70b8ef34b4c93063c4a6008c62c"
 
 [[r2_buckets]]
 binding = "COLLECT_R2"
