@@ -1,100 +1,71 @@
 ## Context
 
-当前翻译功能已有基础骨架：
-- 后端 `api/src/routes/translate.ts`：调用 Google Translate 公共 API，接受 `text` + `sourceLang` + `targetLang`，返回翻译结果
-- 前端 `articleStore.ts`：`translateArticle` 方法调用后端 API，结果存于 Zustand 内存 store
-- 前端 `ArticleToolbar.tsx`：翻译按钮，触发全文翻译
-- 前端 `ArticleReader.tsx`：支持三种视图模式（原文/双语/译文），有视图切换 UI
+双语翻译功能已在上一轮变更中完整实现，包括：
+- **后端**：基于 linkedom 的分段 HTML 翻译 + Cloudflare KV 缓存 + per-user 速率限制
+- **前端**：语言选择器、三模式切换（原文/双语/译文）、段落级双语渲染
+- **移动端**：Flutter Riverpod provider、本地缓存、三模式 UI
 
-**问题**：翻译是整段发送、无缓存持久化、无速率限制、译文丢失 HTML 结构、不支持多语言选择、移动端无翻译。
-
-**约束**：
-- 已绑定 Cloudflare KV（`COLLECT_KV`），可直接用于缓存
-- Google Translate 公共接口有频率限制（约 100 请求/分钟/IP），需要服务端节流
-- 前端使用 Astro + React Islands，翻译 UI 在 React 组件中
-- 移动端 Flutter 使用 Dio 调用 API
+当前已支持 5 种语言（zh-CN/zh-TW/en/ja/ko），翻译结果缓存 7 天。但存在以下不足：
+1. 语言覆盖有限，用户希望支持更多语言
+2. 翻译质量（HTML 结构保留）仍需优化
+3. 无翻译历史记录
+4. 移动端离线翻译体验不完整
 
 ## Goals / Non-Goals
 
 **Goals:**
-- 分段翻译：保持文章 HTML 结构，按块级元素逐段翻译后重组
-- KV 持久化缓存：翻译结果按 `userId:articleId:targetLang` 缓存到 KV，TTL 7 天
-- 速率限制：per-user 10 次翻译请求/分钟
-- 多语言选择：用户可选目标语言（zh-CN / zh-TW / en / ja / ko）
-- 移动端 Flutter 翻译支持
-- 译文结构化渲染：段落级别对应原文，保留格式
+- 扩展翻译语言支持至 15+ 种主流语言
+- 优化分段翻译的 HTML 结构保留能力
+- 实现翻译历史记录（D1 表 + 前端页面 + 移动端）
+- 移动端完善离线翻译缓存，支持离线查看
 
 **Non-Goals:**
-- 不自建翻译服务（继续使用 Google Translate 公共 API）
-- 不做逐句级对齐翻译（段落级足够）
-- 不做翻译质量评估/对比
-- 不修改 RSS 抓取/解析流程
+- 不替换 Google Translate 为其他翻译引擎（如 DeepL、OpenAI）
+- 不实现实时翻译或流式翻译
+- 不做翻译质量的人工评估体系
 
 ## Decisions
 
-### 1. 分段翻译策略：DOM 解析 + 逐段翻译 + 结构重组
+### 1. 语言列表采用配置化白名单
 
-**决策**：后端接收文章 `content`（HTML），使用简单的 HTML 解析（正则分割块级元素）拆分为文本块，逐块调用 Google Translate，再将翻译结果按原 HTML 标签结构重组。
+**Decision:** 将支持的语言列表定义在后端配置常量中，同时在前端和移动端维护相同的语言列表配置。
 
-**为什么不用 `@extractus/article-extractor` 或 `Readability`**：这些库用于提取正文，不负责翻译。我们需要的是保持 HTML 标签结构的同时翻译文本内容。
+**Why:** 保持三端语言列表一致性，避免前端选择了后端不支持的语言。后续增减语言只需修改配置。
 
-**替代方案**：
-- 方案 A（整段发送）：当前方案，超长文本会被 Google 截断。❌
-- 方案 B（DOM 解析）：用 `node-html-parser` 等轻量库解析 HTML，遍历文本节点逐段翻译。✅ 选择此方案，更精确。
-- 方案 C（纯文本翻译 + 模板重建）：丢失格式。❌
+**Alternatives considered:**
+- 后端动态查询语言列表 → 过度设计，语言列表相对稳定
+- 三端各自维护 → 容易不一致
 
-**最终选择**：方案 B。引入 `node-html-parser`（~5KB），遍历 DOM 树，翻译每个文本节点，保持标签结构不变。
+### 2. 翻译历史存储在 D1 而非 KV
 
-### 2. 翻译缓存：Cloudflare KV
+**Decision:** 使用 D1 SQLite 表存储翻译历史记录，而非扩展现有 KV 缓存。
 
-**决策**：使用 `COLLECT_KV` 存储翻译结果，key 格式 `translation:{userId}:{articleId}:{targetLang}`，value 为 JSON `{ original, translated, timestamp, htmlStructured: true }`，TTL 604800 秒（7 天）。
+**Why:**
+- 翻译历史需要查询和过滤能力（按时间、按文章），KV 不支持查询
+- 历史记录是持久化的，不同于 7 天 TTL 的缓存
+- D1 已用于项目其他数据存储，无额外依赖
 
-**为什么不在前端缓存**：前端 Zustand store 刷新即丢失。IndexedDB 可以但增加了前端复杂度。KV 是后端统一方案，且多端共享（web + mobile 都走同一 API）。
+**Alternatives considered:**
+- KV 存储 → 不支持查询，不适合历史场景
+- R2 存储 → 不适合结构化数据
 
-**TTL 选择 7 天的原因**：RSS 文章是静态内容，不会变化。7 天足够覆盖活跃用户的阅读周期，同时自动清理过期数据节省 KV 空间。
+### 3. HTML 结构保留采用属性标记方案
 
-### 3. 速率限制：滑动窗口计数器
+**Decision:** 在分段翻译时，为每个 block-level 元素生成唯一 ID 标记，翻译后按标记重组 HTML。
 
-**决策**：使用 Cloudflare KV 实现 per-user 滑动窗口限流。key `rate:translate:{userId}`，value `{ count, windowStart }`，窗口 60 秒，上限 10 次。
+**Why:** 当前实现已经按段落拆分，但重组时丢失了 HTML 标签。通过标记方案可以在翻译结果中重建原始 HTML 结构。
 
-**为什么不用 Cloudflare Rate Limiting 产品**：那是 HTTP 层限流（按 IP），我们需要按用户限流。KV 足够简单。
+### 4. 移动端离线缓存使用 SharedPreferences
 
-### 4. 目标语言：用户级偏好设置
+**Decision:** 沿用已有的 SharedPreferences 方案，不引入 Hive 等额外依赖。
 
-**决策**：目标语言存储在 Zustand store 中（不新增后端 API），默认为 `zh-CN`。用户可在翻译下拉菜单中选择，选择后记住。
-
-**支持的语言**：zh-CN（简体中文）、zh-TW（繁体中文）、en（英语）、ja（日语）、ko（韩语）。覆盖目标用户的主要阅读语言。
-
-### 5. 移动端翻译 API 复用
-
-**决策**：Flutter 端复用同一个 `POST /api/translate` 端点，但新增一个可选参数 `articleId`，用于关联缓存。移动端本地用 `SharedPreferences` 缓存翻译结果。
-
-### 6. 译文渲染：段落级映射
-
-**决策**：前端将原文 HTML 按块级元素（`<p>`, `<h1-6>`, `<li>`, `<blockquote>`）拆分数组，翻译结果同样返回数组。双语模式下逐段对照显示（原文段落 + 译文段落配对）。
-
-**API 响应格式变更**（BREAKING 对现有翻译 API 消费者）：
-```json
-{
-  "success": true,
-  "data": {
-    "segments": [
-      { "original": "原文段落1", "translated": "译文段落1" },
-      { "original": "原文段落2", "translated": "译文段落2" }
-    ],
-    "targetLang": "zh-CN",
-    "detectedLang": "en"
-  }
-}
-```
+**Why:** 翻译缓存数据量小（每篇文章 < 100KB），SharedPreferences 足够。Hive 引入额外复杂度但收益不明显。
 
 ## Risks / Trade-offs
 
 | Risk | Mitigation |
-|------|------------|
-| Google Translate 公共接口可能被封或变更 | 已有 User-Agent 伪装；未来可切换到 Google Cloud Translation API（付费） |
-| HTML 解析不准确（嵌套标签、内联元素） | 使用 `node-html-parser` 做文本节点级别的翻译，不修改标签结构，风险可控 |
-| KV 读写延迟影响响应速度 | 先查缓存再翻译；KV 读延迟通常 < 50ms，可接受 |
-| 长文章翻译超时（Cloudflare Workers 10s CPU 限制） | 分段串行翻译可能超时；如遇到，可改为批量翻译（10 段一组）或使用 `node-html-parser` 减少 DOM 操作 |
-| 翻译 API 被滥用（高频调用） | per-user 速率限制 + KV 缓存命中跳过翻译 |
-| 移动端网络不稳定导致翻译失败 | 移动端添加重试机制 + 本地缓存 |
+|------|-----------|
+| Google Translate 公共接口限流 | 后端已有 per-user 速率限制；未来可切换到付费 API |
+| D1 翻译历史表增长 | 定期清理超过 90 天的记录；添加索引优化查询 |
+| 多语言列表过长影响 UX | 语言选择器按使用频率排序，常用语言置顶 |
+| 翻译质量不稳定（HTML 片段） | 分段翻译降低单次请求大小；失败时降级为纯文本翻译 |
