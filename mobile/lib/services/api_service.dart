@@ -161,6 +161,24 @@ class ApiService {
     return response.data as Map<String, dynamic>;
   }
 
+  /// 翻译文章内容
+  Future<Map<String, dynamic>> translateArticle({
+    required String articleId,
+    required String content,
+    String targetLang = 'zh-CN',
+  }) async {
+    final response = await _dio.post('/api/translate', data: {
+      'articleId': articleId,
+      'content': content,
+      'targetLang': targetLang,
+    });
+    final data = response.data as Map<String, dynamic>;
+    if (data['success'] == true) {
+      return data['data'] as Map<String, dynamic>;
+    }
+    throw Exception(data['error'] ?? '翻译失败');
+  }
+
   /// 批量更新文章
   Future<void> batchUpdateArticles(String action, List<String> ids) async {
     await _dio.post('/api/articles/batch', data: {

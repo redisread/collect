@@ -457,7 +457,7 @@ export function ArticleReader() {
 									</>
 								)}
 
-								{/* 翻译内容 */}
+								{/* 翻译内容 — 分段渲染 */}
 								{hasTranslation && (viewMode === "translated" || viewMode === "both") && (
 									<div
 										className={cn(
@@ -470,8 +470,19 @@ export function ArticleReader() {
 												中文翻译
 											</h3>
 										)}
-										<div className="prose prose-sm max-w-none text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap">
-											{translation.translated}
+										<div className="space-y-3 text-[var(--text-secondary)] leading-relaxed">
+											{translation.segments && translation.segments.length > 0 ? (
+												translation.segments.map((seg, i) => (
+													<div key={i} className="translation-segment">
+														{viewMode === "both" && (
+															<p className="text-[var(--text-primary)] mb-1">{seg.original}</p>
+														)}
+														<p className="translation-text">{seg.translated}</p>
+													</div>
+												))
+											) : (
+												<div className="whitespace-pre-wrap">{translation.translated}</div>
+											)}
 										</div>
 									</div>
 								)}
@@ -573,6 +584,22 @@ export function ArticleReader() {
 					.dark .annotation-highlight-pink {
 						background-color: rgba(251, 113, 133, 0.3);
 					}
+						.translation-segment {
+							padding: 0.5rem 0;
+							border-bottom: 1px solid var(--border-light, #e5e7eb);
+						}
+						.translation-segment:last-child {
+							border-bottom: none;
+						}
+						.translation-segment p:first-child {
+							color: var(--text-primary);
+							font-size: 0.9rem;
+						}
+						.translation-text {
+							color: var(--accent, #3b82f6);
+							font-size: 0.9rem;
+							line-height: 1.7;
+						}
 				`}</style>
 			</>
 		);

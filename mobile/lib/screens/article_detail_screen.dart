@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/article.dart';
 import '../providers/article_provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/translation_provider.dart';
 import '../services/offline_service.dart';
 import '../widgets/reading_progress_bar.dart';
 
@@ -50,6 +51,9 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
 
   /// 本地缓存的文章
   Article? _cachedArticle;
+
+  /// 翻译视图模式: 0=原文, 1=双语, 2=译文
+  int _translationViewMode = 0;
 
   @override
   void initState() {
@@ -207,6 +211,9 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final article = _cachedArticle;
+    final translationState = ref.watch(translationProvider);
+    final translation = translationState.translations[widget.articleId];
+    final hasTranslation = translation != null;
 
     // 如果还没有加载到文章，显示加载中
     if (article == null) {
@@ -236,6 +243,27 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // 翻译按钮
+            CupertinoButton(
+              padding: EdgeInsets.zero,
+              child: translationState.isTranslating
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CupertinoActivityIndicator(radius: 8),
+                    )
+                  : Icon(
+                      hasTranslation
+                          ? CupertinoIcons.checkmark_alt_circle_fill
+                          : CupertinoIcons.translate,
+                      color: hasTranslation
+                          ? CupertinoColors.systemGreen
+                          : CupertinoColors.systemGrey,
+                    ),
+              onPressed: translationState.isTranslating
+                  ? null
+                  : () => _translateArticle(article),
+            ),
             // 分享按钮
             CupertinoButton(
               padding: EdgeInsets.zero,
@@ -293,17 +321,78 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
                   ],
                 ),
               ),
-            // 内容切换器（如果提取了内容）
-            if (article.content != null && article.content!.isNotEmpty) ...[
-              _buildContentSwitcher(),
+            // 内容切换器（如果提取了内容或有翻译）
+            if ((article.content != null && article.content!.isNotEmpty) || hasTranslation) ...[
+              _buildContentSwitcherWithTranslation(article, translation, hasTranslation),
               const Divider(height: 1),
             ],
             // 主内容区域
             Expanded(
-              child: _buildContentArea(article),
+              child: _buildContentArea(article, translation, hasTranslation),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// 构建内容切换器（含翻译模式）
+  Widget _buildContentSwitcherWithTranslation(Article article, dynamic translation, bool hasTranslation) {
+    // 没有翻译时，使用原来的切换器
+    if (!hasTranslation) {
+      return _buildContentSwitcher();
+    }
+
+    // 有翻译时，显示原文/双语/译文
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: CupertinoColors.systemBackground,
+        border: Border(
+          bottom: BorderSide(color: CupertinoColors.separator),
+        ),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              CupertinoSlidingSegmentedControl<int>(
+                groupValue: _translationViewMode,
+                children: const {
+                  0: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    child: Text('原文'),
+                  ),
+                  1: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    child: Text('双语'),
+                  ),
+                  2: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    child: Text('译文'),
+                  ),
+                },
+                onValueChanged: (value) {
+                  if (value != null) {
+                    setState(() => _translationViewMode = value);
+                  }
+                },
+              ),
+              const Spacer(),
+              // 清除翻译按钮
+              GestureDetector(
+                onTap: () {
+                  ref.read(translationProvider.notifier).clearTranslation(widget.articleId);
+                  setState(() => _translationViewMode = 0);
+                },
+                child: const Text(
+                  '清除',
+                  style: TextStyle(fontSize: 13, color: CupertinoColors.systemRed),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -342,7 +431,12 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
   }
 
   /// 构建主内容区域
-  Widget _buildContentArea(Article article) {
+  Widget _buildContentArea(Article article, dynamic translation, bool hasTranslation) {
+    // 如果处于翻译模式
+    if (hasTranslation && _translationViewMode > 0) {
+      return _buildTranslatedContent(article, translation, _translationViewMode);
+    }
+
     // 如果有提取的内容且选择显示提取内容
     if (_showExtracted && article.content != null && article.content!.isNotEmpty) {
       return _buildExtractedContent(article.content!);
@@ -515,6 +609,93 @@ $content
 </body>
 </html>
 '''.trim();
+  }
+
+  /// 翻译文章内容
+  Future<void> _translateArticle(Article article) async {
+    final content = article.content ?? article.summary ?? '';
+    if (content.isEmpty) {
+      _showToast('暂无可翻译的内容');
+      return;
+    }
+
+    try {
+      await ref.read(translationProvider.notifier).translateArticle(
+            articleId: article.id,
+            content: content,
+          );
+      // 翻译完成后切换到双语模式
+      setState(() => _translationViewMode = 1);
+      _showToast('翻译完成');
+    } catch (e) {
+      _showToast('翻译失败: $e');
+    }
+  }
+
+  /// 构建翻译后的内容视图
+  Widget _buildTranslatedContent(Article article, dynamic translation, int mode) {
+    if (translation == null) {
+      return const Center(child: Text('翻译数据不可用'));
+    }
+
+    final segments = translation.segments as List<dynamic>?;
+    if (segments == null || segments.isEmpty) {
+      // 回退到纯文本显示
+      return SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Text(translation.translated ?? ''),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: mode == 2 ? segments.length : segments.length * 2,
+      itemBuilder: (context, index) {
+        if (mode == 2) {
+          // 仅译文模式
+          final seg = segments[index];
+          return _buildTranslationSegment(null, seg['translated'] as String);
+        } else {
+          // 双语模式：交替显示原文和译文
+          if (index.isEven) {
+            final seg = segments[index ~/ 2];
+            return _buildTranslationSegment(seg['original'] as String, null);
+          } else {
+            final seg = segments[index ~/ 2];
+            return _buildTranslationSegment(null, seg['translated'] as String);
+          }
+        }
+      },
+    );
+  }
+
+  /// 构建单个翻译段
+  Widget _buildTranslationSegment(String? original, String? translated) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (original != null)
+            Text(
+              original,
+              style: const TextStyle(fontSize: 15, color: CupertinoColors.label),
+            ),
+          if (original != null && translated != null)
+            const SizedBox(height: 4),
+          if (translated != null)
+            Text(
+              translated,
+              style: TextStyle(
+                fontSize: 14,
+                color: CupertinoColors.systemBlue,
+              ),
+            ),
+          if (original != null || translated != null)
+            Divider(height: 16, color: CupertinoColors.separator.withOpacity(0.5)),
+        ],
+      ),
+    );
   }
 
   /// 提取文章内容

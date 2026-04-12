@@ -63,10 +63,21 @@ export type SelectedSource =
   | { type: "folder"; folderId: string };
 
 // ==================== Translation Types ====================
+export interface TranslationSegment {
+  original: string;
+  translated: string;
+}
+
 export interface TranslationResult {
   original: string;
   translated: string;
   detectedLang?: string;
+  /** 分段翻译结果（新格式） */
+  segments?: TranslationSegment[];
+  /** 目标语言 */
+  targetLang?: string;
+  /** 缓存时间戳 */
+  timestamp?: number;
 }
 
 // ==================== Annotation Types ====================

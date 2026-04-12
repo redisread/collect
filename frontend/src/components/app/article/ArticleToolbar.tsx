@@ -1,6 +1,7 @@
-import { useArticleStore } from "@/lib/store/articleStore";
+import { useArticleStore, SUPPORTED_LANGUAGES } from "@/lib/store/articleStore";
 import { cn } from "@/lib/utils/cn";
 import type { Article } from "@/lib/types";
+import { useState } from "react";
 
 interface ArticleToolbarProps {
 	article: Article;
@@ -8,11 +9,22 @@ interface ArticleToolbarProps {
 }
 
 export function ArticleToolbar({ article, onOpenNotes }: ArticleToolbarProps) {
-	const { toggleStarred, toggleReadLater, translateArticle, translations, isTranslating, extractArticle, isExtracting } =
+	const {
+		toggleStarred,
+		toggleReadLater,
+		translateArticle,
+		translations,
+		isTranslating,
+		extractArticle,
+		isExtracting,
+		targetLanguage,
+		setTargetLanguage,
+	} =
 		useArticleStore();
 
 	const hasTranslation = !!translations[article.id];
 	const hasContent = !!article.content;
+	const [langDropdownOpen, setLangDropdownOpen] = useState(false);
 
 	// 获取翻译文本（优先使用 content，没有则使用 summary）
 	const getTranslateText = () => {
@@ -24,9 +36,11 @@ export function ArticleToolbar({ article, onOpenNotes }: ArticleToolbarProps) {
 	const handleTranslate = () => {
 		const text = getTranslateText();
 		if (text) {
-			translateArticle(article.id, text);
+			translateArticle(article.id, article.content || text, targetLanguage);
 		}
 	};
+
+	const currentLang = SUPPORTED_LANGUAGES.find((l) => l.code === targetLanguage);
 
 	return (
 		<div className="flex items-center gap-1 px-4 py-2 border-b border-[var(--border-light)] bg-[var(--bg-main)]">
@@ -123,11 +137,48 @@ export function ArticleToolbar({ article, onOpenNotes }: ArticleToolbarProps) {
 				</button>
 			)}
 
-			{/* 翻译 */}
+			{/* 翻译语言选择 + 翻译按钮 */}
+			<div className="relative">
+				<button
+					onClick={() => setLangDropdownOpen(!langDropdownOpen)}
+					title={`当前翻译语言: ${currentLang?.label}`}
+					className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs text-[var(--text-tertiary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] transition-all duration-[var(--transition-base)]"
+				>
+					<svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+						<path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9.004 9.004 0 0 0 8.716-6.747M12 21a9.004 9.004 0 0 1-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 0 1 7.843 4.504M12 3a8.997 8.997 0 0 0-7.843 4.504m15.686 0A11.953 11.953 0 0 1 12 10.5c-2.998 0-5.74-1.1-7.843-2.996m15.686 0A8.959 8.959 0 0 1 21 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0 1 12 16.5a17.92 17.92 0 0 1-8.716-2.247m0 0A8.966 8.966 0 0 1 3 12c0-1.264.26-2.466.729-3.558" />
+					</svg>
+					<span className="max-w-[40px] truncate">{currentLang?.label ?? "中文"}</span>
+				</button>
+				{langDropdownOpen && (
+					<>
+						<div className="fixed inset-0 z-10" onClick={() => setLangDropdownOpen(false)} />
+						<div className="absolute bottom-full left-0 mb-1 z-20 min-w-[140px] rounded-lg border border-[var(--border)] bg-[var(--bg-card)] shadow-lg overflow-hidden">
+							{SUPPORTED_LANGUAGES.map((lang) => (
+								<button
+									key={lang.code}
+									onClick={() => {
+										setTargetLanguage(lang.code);
+										setLangDropdownOpen(false);
+									}}
+									className={cn(
+										"w-full px-3 py-2 text-left text-xs transition-colors",
+										lang.code === targetLanguage
+											? "bg-[var(--accent)] text-white"
+											: "text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]"
+									)}
+								>
+									{lang.label}
+								</button>
+							))}
+						</div>
+					</>
+				)}
+			</div>
+
 			<button
 				onClick={handleTranslate}
 				disabled={isTranslating}
-				title="翻译为中文"
+				title={`翻译为 ${currentLang?.label ?? "中文"}`}
 				className={cn(
 					"flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs",
 					"transition-all duration-[var(--transition-base)]",
@@ -144,10 +195,10 @@ export function ArticleToolbar({ article, onOpenNotes }: ArticleToolbarProps) {
 					</svg>
 				) : (
 					<svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-						<path strokeLinecap="round" strokeLinejoin="round" d="M10.5 21l6-6m-6 6l6-6m-6 6h12" />
+						<path strokeLinecap="round" strokeLinejoin="round" d="M10.5 21l6-6m-6 6h12" />
 					</svg>
 				)}
-				{isTranslating ? "翻译中" : hasTranslation ? "译文" : "翻译"}
+				{isTranslating ? "翻译中" : hasTranslation ? "已翻译" : "翻译"}
 			</button>
 
 			<div className="flex-1" />

@@ -3,16 +3,26 @@ import type {
 	Article,
 	ArticleListItem,
 	TranslationResult,
+	TranslationSegment,
 	Annotation,
 	SelectedSource,
 } from "../types";
 
 // Re-export types for backward compatibility
-export type { ArticleListItem, TranslationResult, Annotation };
+export type { ArticleListItem, TranslationResult, TranslationSegment, Annotation };
 
 const API_BASE = typeof import.meta !== 'undefined' && (import.meta as unknown as { env: Record<string, string> }).env?.PUBLIC_API_URL
   ? (import.meta as unknown as { env: Record<string, string> }).env.PUBLIC_API_URL
   : "http://localhost:8787";
+
+// 支持的目标语言
+export const SUPPORTED_LANGUAGES = [
+	{ code: "zh-CN", label: "简体中文" },
+	{ code: "zh-TW", label: "繁體中文" },
+	{ code: "en", label: "English" },
+	{ code: "ja", label: "日本語" },
+	{ code: "ko", label: "한국어" },
+] as const;
 
 interface ArticleStore {
 	articles: ArticleListItem[];
@@ -28,6 +38,8 @@ interface ArticleStore {
 	// 翻译相关状态
 	translations: Record<string, TranslationResult>;
 	isTranslating: boolean;
+	/** 当前选中的目标语言 */
+	targetLanguage: string;
 
 	// 提取相关状态
 	isExtracting: boolean;
@@ -50,8 +62,9 @@ interface ArticleStore {
 	toggleReadLater: (articleId: string) => Promise<void>;
 	setSortOrder: (sortOrder: "desc" | "asc") => void;
 	navigateArticle: (direction: "next" | "prev") => Promise<void>;
-	translateArticle: (articleId: string, text: string) => Promise<void>;
+	translateArticle: (articleId: string, content: string, targetLang?: string) => Promise<void>;
 	clearTranslation: (articleId: string) => void;
+	setTargetLanguage: (lang: string) => void;
 	extractArticle: (articleId: string) => Promise<void>;
 	batchUpdateArticles: (action: "read" | "unread" | "star" | "unstar", articleIds: string[]) => Promise<void>;
 	setSearchQuery: (query: string) => void;
@@ -97,6 +110,7 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 	// 翻译相关状态
 	translations: {},
 	isTranslating: false,
+	targetLanguage: "zh-CN",
 
 	// 搜索相关状态
 	searchQuery: "",
@@ -254,24 +268,42 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 		if (nextArticle) await get().selectArticle(nextArticle.id);
 	},
 
-	translateArticle: async (articleId, text) => {
+	translateArticle: async (articleId, content, targetLang) => {
+		const lang = targetLang || get().targetLanguage;
 		set({ isTranslating: true });
 		try {
 			const res = await fetch(`${API_BASE}/api/translate`, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				credentials: "include",
-				body: JSON.stringify({ text, targetLang: "zh-CN" }),
+				body: JSON.stringify({ articleId, content, targetLang: lang }),
 			});
-			const json = await res.json() as { success: boolean; data: TranslationResult };
+			const json = await res.json() as {
+				success: boolean;
+				data: { segments: TranslationSegment[]; targetLang: string; detectedLang: string; timestamp: number };
+				error?: string;
+			};
 			if (json.success) {
+				// 合并所有段为单一翻译结果，兼容现有 UI
+				const translated = json.data.segments.map((s) => s.translated).join("\n\n");
 				set((state) => ({
 					translations: {
 						...state.translations,
-						[articleId]: json.data,
+						[articleId]: {
+							original: "",
+							translated,
+							segments: json.data.segments,
+							targetLang: json.data.targetLang,
+							detectedLang: json.data.detectedLang,
+							timestamp: json.data.timestamp,
+						},
 					},
 				}));
+			} else {
+				console.error("翻译失败:", json.error);
 			}
+		} catch (error) {
+			console.error("翻译请求失败:", error);
 		} finally {
 			set({ isTranslating: false });
 		}
@@ -283,6 +315,10 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 			delete newTranslations[articleId];
 			return { translations: newTranslations };
 		});
+	},
+
+	setTargetLanguage: (lang) => {
+		set({ targetLanguage: lang });
 	},
 
 	toggleRead: async (articleId) => {
