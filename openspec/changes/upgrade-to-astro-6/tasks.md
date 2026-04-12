@@ -34,5 +34,5 @@
 
 ## 6. 提交
 
-- [ ] 6.1 创建 PR，包含 `package.json`、`pnpm-lock.yaml`、配置变更
-- [ ] 6.2 PR 描述中列出所有 breaking changes 及对应修复
+- [x] 6.1 创建 PR，包含 `package.json`、`pnpm-lock.yaml`、配置变更
+- [x] 6.2 PR 描述中列出所有 breaking changes 及对应修复
