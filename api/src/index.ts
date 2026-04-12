@@ -12,6 +12,7 @@ import settingsRoute from "./routes/settings";
 import smartFoldersRoute from "./routes/smart-folders";
 import annotationsRoute from "./routes/annotations";
 import statsRoute from "./routes/stats";
+import translationsRoute from "./routes/translations";
 import { sendPendingDigests } from "./lib/scheduler/digest";
 import type { CloudflareEnv } from "./types";
 
@@ -45,6 +46,7 @@ app.route("/api/settings", settingsRoute);
 app.route("/api/smart-folders", smartFoldersRoute);
 app.route("/api/annotations", annotationsRoute);
 app.route("/api/stats", statsRoute);
+app.route("/api/translations", translationsRoute);
 
 // Cron 任务处理器
 export default {

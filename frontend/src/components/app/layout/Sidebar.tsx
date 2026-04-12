@@ -123,6 +123,17 @@ export function Sidebar() {
 				<FolderTree />
 			</div>
 
+			{/* 翻译历史入口 */}
+			<a
+				href="/translations"
+				className="mx-3 my-1 flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors"
+			>
+				<svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+					<path strokeLinecap="round" strokeLinejoin="round" d="M10.5 21l6-6m-6 6h12" />
+				</svg>
+				翻译历史
+			</a>
+
 			{/* 底部工具栏 */}
 			<div className="shrink-0 px-3 py-3 border-t border-[var(--border-light)] flex items-center justify-between">
 				<ThemeToggle />

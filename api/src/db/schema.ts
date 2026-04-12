@@ -355,6 +355,29 @@ export const syncStates = sqliteTable(
   ]
 );
 
+// 翻译历史表
+export const translationHistory = sqliteTable(
+  "translation_history",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+    articleId: text("article_id").notNull(),
+    targetLang: text("target_lang").notNull(),
+    sourceLang: text("source_lang").default("auto"),
+    articleTitle: text("article_title"),
+    feedName: text("feed_name"),
+    translatedAt: text("translated_at").default(sql`(datetime('now'))`),
+  },
+  (table) => [
+    index("idx_translation_history_user_id").on(table.userId),
+    index("idx_translation_history_translated_at").on(table.translatedAt),
+    index("idx_translation_history_user_article").on(table.userId, table.articleId),
+  ]
+);
+
+export type TranslationHistory = typeof translationHistory.$inferSelect;
+export type NewTranslationHistory = typeof translationHistory.$inferInsert;
+
 // ─── 导出更多类型 ─────────────────────────────────────────────────────────────
 
 export type UserPreference = typeof userPreferences.$inferSelect;

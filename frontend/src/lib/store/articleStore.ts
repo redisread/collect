@@ -15,13 +15,23 @@ const API_BASE = typeof import.meta !== 'undefined' && (import.meta as unknown a
   ? (import.meta as unknown as { env: Record<string, string> }).env.PUBLIC_API_URL
   : "http://localhost:8787";
 
-// 支持的目标语言
+// 支持的目标语言（与 api/src/config/languages.ts 保持一致）
 export const SUPPORTED_LANGUAGES = [
 	{ code: "zh-CN", label: "简体中文" },
 	{ code: "zh-TW", label: "繁體中文" },
 	{ code: "en", label: "English" },
 	{ code: "ja", label: "日本語" },
 	{ code: "ko", label: "한국어" },
+	{ code: "fr", label: "Français" },
+	{ code: "de", label: "Deutsch" },
+	{ code: "es", label: "Español" },
+	{ code: "pt", label: "Português" },
+	{ code: "ru", label: "Русский" },
+	{ code: "ar", label: "العربية" },
+	{ code: "hi", label: "हिन्दी" },
+	{ code: "it", label: "Italiano" },
+	{ code: "nl", label: "Nederlands" },
+	{ code: "th", label: "ไทย" },
 ] as const;
 
 interface ArticleStore {

@@ -80,6 +80,23 @@ export interface TranslationResult {
   timestamp?: number;
 }
 
+export interface TranslationHistoryEntry {
+  id: string;
+  articleId: string;
+  targetLang: string;
+  sourceLang: string;
+  articleTitle: string | null;
+  feedName: string | null;
+  translatedAt: string;
+}
+
+export interface TranslationHistoryResponse {
+  items: TranslationHistoryEntry[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 // ==================== Annotation Types ====================
 export interface TextRange {
   text: string;

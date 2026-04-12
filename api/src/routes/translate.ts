@@ -2,15 +2,15 @@ import { Hono } from "hono";
 import { authMiddleware } from "../middleware/auth";
 import type { CloudflareEnv } from "../types";
 import { parseHTML } from "linkedom";
+import { SUPPORTED_LANG_CODES, DEFAULT_TARGET_LANG } from "../config/languages";
+import { getDb } from "../db";
 
 const translateRoute = new Hono<{ Bindings: CloudflareEnv; Variables: { userId: string } }>();
 
 translateRoute.use("/*", authMiddleware);
 
-// 支持的目标语言
-const SUPPORTED_LANGS = new Set(["zh-CN", "zh-TW", "en", "ja", "ko"]);
-
 interface TranslationSegment {
+	tag: string;        // 元素标签名，用于重建 HTML
 	original: string;
 	translated: string;
 }
@@ -35,12 +35,12 @@ async function checkRateLimit(kv: KVNamespace, userId: string): Promise<boolean>
 	return true;
 }
 
-// 从 HTML 中提取可翻译的文本段
+// 从 HTML 中提取可翻译的文本段，保留标签信息用于重建
 function extractSegments(html: string): TranslationSegment[] {
 	const { document } = parseHTML(html);
 	const segments: TranslationSegment[] = [];
 
-	// 使用 querySelectorAll 获取所有块级元素
+	// 块级元素选择器
 	const blockSelector = "p, h1, h2, h3, h4, h5, h6, li, blockquote, figcaption, td, th";
 	const elements = document.querySelectorAll(blockSelector);
 
@@ -48,18 +48,21 @@ function extractSegments(html: string): TranslationSegment[] {
 		const el = elements[i];
 		const text = el.textContent?.trim();
 		if (text && text.length > 0) {
-			segments.push({ original: text, translated: "" });
+			segments.push({
+				tag: el.tagName.toLowerCase(),
+				original: text,
+				translated: "",
+			});
 		}
 	}
 
-	// 如果没有找到块级元素，尝试获取 body 的文本
+	// 降级：无块级元素时按空行分段
 	if (segments.length === 0) {
 		const bodyText = document.body?.textContent?.trim();
 		if (bodyText) {
-			// 按空行分段
 			const parts = bodyText.split(/\n\s*\n/).filter((t: string) => t.trim());
 			for (const part of parts) {
-				segments.push({ original: part.trim(), translated: "" });
+				segments.push({ tag: "p", original: part.trim(), translated: "" });
 			}
 		}
 	}
@@ -90,6 +93,21 @@ async function translateText(text: string, targetLang: string, sourceLang: strin
 	return data?.[0]?.map((item) => item[0]).join("") ?? "";
 }
 
+// 根据分段重建 HTML，保留原始结构
+function rebuildHtml(segments: TranslationSegment[], mode: "original" | "translated" | "bilingual"): string {
+	let html = "";
+	for (const seg of segments) {
+		const tag = seg.tag || "p";
+		if (mode === "bilingual") {
+			html += `<${tag}>${seg.original}</${tag}><${tag} class="translation-text">${seg.translated}</${tag}>`;
+		} else {
+			const content = mode === "translated" ? seg.translated : seg.original;
+			html += `<${tag}>${content}</${tag}>`;
+		}
+	}
+	return html;
+}
+
 // POST /api/translate — 分段翻译文章
 translateRoute.post("/", async (c) => {
 	const userId = c.get("userId");
@@ -101,7 +119,7 @@ translateRoute.post("/", async (c) => {
 		articleId,
 		content,
 		sourceLang = "auto",
-		targetLang = "zh-CN",
+		targetLang = DEFAULT_TARGET_LANG,
 	} = body as {
 		articleId?: string;
 		content?: string;
@@ -115,7 +133,7 @@ translateRoute.post("/", async (c) => {
 	if (!content || typeof content !== "string" || content.trim().length === 0) {
 		return c.json({ success: false, error: "缺少文章内容" }, 400);
 	}
-	if (typeof targetLang !== "string" || !SUPPORTED_LANGS.has(targetLang)) {
+	if (typeof targetLang !== "string" || !SUPPORTED_LANG_CODES.has(targetLang)) {
 		return c.json({ success: false, error: "不支持的目标语言" }, 400);
 	}
 
@@ -167,6 +185,18 @@ translateRoute.post("/", async (c) => {
 		timestamp: Date.now(),
 	};
 	await kv.put(cacheKey, JSON.stringify(result), { expirationTtl: 604800 }); // 7 天
+
+	// 7. 写入翻译历史记录
+	try {
+		const rawDb = c.env.DB;
+		await rawDb.prepare(
+			`INSERT INTO translation_history (user_id, article_id, target_lang, source_lang)
+			 VALUES (?, ?, ?, ?)`
+		).bind(userId, articleId, targetLang, sourceLang).run();
+	} catch (err) {
+		console.error("写入翻译历史失败:", err);
+		// 不阻塞主流程
+	}
 
 	return c.json({ success: true, data: result });
 });
