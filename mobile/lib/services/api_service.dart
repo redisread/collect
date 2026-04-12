@@ -187,6 +187,29 @@ class ApiService {
     });
   }
 
+  // ─── 翻译历史 ─────────────────────────────────────────────────────────────
+
+  /// 获取翻译历史记录（分页）
+  Future<Map<String, dynamic>> getTranslationHistory({
+    int page = 1,
+    int pageSize = 20,
+  }) async {
+    final response = await _dio.get('/api/translations/history', queryParameters: {
+      'page': page,
+      'pageSize': pageSize,
+    });
+    final data = response.data as Map<String, dynamic>;
+    if (data['success'] == true) {
+      return data['data'] as Map<String, dynamic>;
+    }
+    throw Exception(data['error'] ?? '获取翻译历史失败');
+  }
+
+  /// 删除翻译历史记录
+  Future<void> deleteTranslationHistory(String id) async {
+    await _dio.delete('/api/translations/history/$id');
+  }
+
   // ─── 刷新 ─────────────────────────────────────────────────────────────────
 
   Future<void> refreshFeeds() async {

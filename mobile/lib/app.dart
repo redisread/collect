@@ -6,6 +6,7 @@ import 'screens/login_screen.dart';
 import 'screens/register_screen.dart';
 import 'screens/article_detail_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/translation_history_screen.dart';
 import 'providers/auth_provider.dart';
 
 class CollectApp extends ConsumerWidget {
@@ -39,6 +40,9 @@ class CollectApp extends ConsumerWidget {
         GoRoute(
             path: '/settings',
             builder: (ctx, state) => const SettingsScreen()),
+        GoRoute(
+            path: '/translations',
+            builder: (ctx, state) => const TranslationHistoryScreen()),
       ],
     );
 

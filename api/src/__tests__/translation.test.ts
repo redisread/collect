@@ -1,10 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { parseHTML } from "linkedom";
+import {
+	SUPPORTED_LANGUAGES,
+	SUPPORTED_LANG_CODES,
+	DEFAULT_TARGET_LANG,
+} from "../config/languages";
 
 // 测试 extractSegments 的核心逻辑（通过模拟 parseHTML）
-function extractSegments(html: string): Array<{ original: string; translated: string }> {
+function extractSegments(html: string): Array<{ tag: string; original: string; translated: string }> {
 	const { document } = parseHTML(html);
-	const segments: Array<{ original: string; translated: string }> = [];
+	const segments: Array<{ tag: string; original: string; translated: string }> = [];
 
 	const blockSelector = "p, h1, h2, h3, h4, h5, h6, li, blockquote, figcaption, td, th";
 	const elements = document.querySelectorAll(blockSelector);
@@ -13,7 +18,7 @@ function extractSegments(html: string): Array<{ original: string; translated: st
 		const el = elements[i];
 		const text = el.textContent?.trim();
 		if (text && text.length > 0) {
-			segments.push({ original: text, translated: "" });
+			segments.push({ tag: el.tagName.toLowerCase(), original: text, translated: "" });
 		}
 	}
 
@@ -22,7 +27,7 @@ function extractSegments(html: string): Array<{ original: string; translated: st
 		if (bodyText) {
 			const parts = bodyText.split(/\n\s*\n/).filter((t: string) => t.trim());
 			for (const part of parts) {
-				segments.push({ original: part.trim(), translated: "" });
+				segments.push({ tag: "p", original: part.trim(), translated: "" });
 			}
 		}
 	}
@@ -37,7 +42,9 @@ describe("Translation", () => {
 			const segments = extractSegments(html);
 			expect(segments).toHaveLength(2);
 			expect(segments[0].original).toBe("Hello World");
+			expect(segments[0].tag).toBe("p");
 			expect(segments[1].original).toBe("Second paragraph");
+			expect(segments[1].tag).toBe("p");
 		});
 
 		it("should extract text from headings", () => {
@@ -45,7 +52,9 @@ describe("Translation", () => {
 			const segments = extractSegments(html);
 			expect(segments).toHaveLength(3);
 			expect(segments[0].original).toBe("Title");
+			expect(segments[0].tag).toBe("h1");
 			expect(segments[1].original).toBe("Subtitle");
+			expect(segments[1].tag).toBe("h2");
 		});
 
 		it("should extract text from list items", () => {
@@ -216,32 +225,44 @@ describe("Translation", () => {
 	});
 
 	describe("supported languages", () => {
-		const SUPPORTED_LANGS = new Set(["zh-CN", "zh-TW", "en", "ja", "ko"]);
-
-		it("should accept zh-CN", () => {
-			expect(SUPPORTED_LANGS.has("zh-CN")).toBe(true);
+		it("should have 15 supported languages", () => {
+			expect(SUPPORTED_LANGUAGES).toHaveLength(15);
 		});
 
-		it("should accept zh-TW", () => {
-			expect(SUPPORTED_LANGS.has("zh-TW")).toBe(true);
+		it("should have no duplicate language codes", () => {
+			const codes = SUPPORTED_LANGUAGES.map((l) => l.code);
+			const unique = new Set(codes);
+			expect(codes).toHaveLength(unique.size);
 		});
 
-		it("should accept en", () => {
-			expect(SUPPORTED_LANGS.has("en")).toBe(true);
-		});
-
-		it("should accept ja", () => {
-			expect(SUPPORTED_LANGS.has("ja")).toBe(true);
-		});
-
-		it("should accept ko", () => {
-			expect(SUPPORTED_LANGS.has("ko")).toBe(true);
+		it("should have all expected languages", () => {
+			const expected = [
+				"zh-CN", "zh-TW", "en", "ja", "ko", "fr", "de", "es",
+				"pt", "ru", "ar", "hi", "it", "nl", "th",
+			];
+			for (const code of expected) {
+				expect(SUPPORTED_LANG_CODES.has(code)).toBe(true);
+			}
 		});
 
 		it("should reject unsupported language", () => {
-			expect(SUPPORTED_LANGS.has("fr")).toBe(false);
-			expect(SUPPORTED_LANGS.has("de")).toBe(false);
-			expect(SUPPORTED_LANGS.has("es")).toBe(false);
+			expect(SUPPORTED_LANG_CODES.has("xx")).toBe(false);
+			expect(SUPPORTED_LANG_CODES.has("sv")).toBe(false);
+			expect(SUPPORTED_LANG_CODES.has("")).toBe(false);
+		});
+
+		it("should have default target lang set to zh-CN", () => {
+			expect(DEFAULT_TARGET_LANG).toBe("zh-CN");
+		});
+
+		it("should have label and nativeLabel for each language", () => {
+			for (const lang of SUPPORTED_LANGUAGES) {
+				expect(lang.code).toBeDefined();
+				expect(lang.label).toBeDefined();
+				expect(lang.nativeLabel).toBeDefined();
+				expect(lang.label.length).toBeGreaterThan(0);
+				expect(lang.nativeLabel.length).toBeGreaterThan(0);
+			}
 		});
 	});
 });

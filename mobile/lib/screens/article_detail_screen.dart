@@ -255,7 +255,7 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
                   : Icon(
                       hasTranslation
                           ? CupertinoIcons.checkmark_alt_circle_fill
-                          : CupertinoIcons.translate,
+                          : Icons.translate,
                       color: hasTranslation
                           ? CupertinoColors.systemGreen
                           : CupertinoColors.systemGrey,
@@ -323,12 +323,12 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
               ),
             // 内容切换器（如果提取了内容或有翻译）
             if ((article.content != null && article.content!.isNotEmpty) || hasTranslation) ...[
-              _buildContentSwitcherWithTranslation(article, translation, hasTranslation),
+              _buildContentSwitcherWithTranslation(article, translation, hasTranslation, translationState.isOffline),
               const Divider(height: 1),
             ],
             // 主内容区域
             Expanded(
-              child: _buildContentArea(article, translation, hasTranslation),
+              child: _buildContentArea(article, translation, hasTranslation, translationState.isOffline),
             ),
           ],
         ),
@@ -337,7 +337,7 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
   }
 
   /// 构建内容切换器（含翻译模式）
-  Widget _buildContentSwitcherWithTranslation(Article article, dynamic translation, bool hasTranslation) {
+  Widget _buildContentSwitcherWithTranslation(Article article, dynamic translation, bool hasTranslation, bool isTranslationOffline) {
     // 没有翻译时，使用原来的切换器
     if (!hasTranslation) {
       return _buildContentSwitcher();
@@ -379,6 +379,23 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
                 },
               ),
               const Spacer(),
+              // 离线指示器
+              if (isTranslationOffline) ...[
+                Icon(
+                  CupertinoIcons.wifi_slash,
+                  size: 14,
+                  color: CupertinoColors.systemOrange,
+                ),
+                const SizedBox(width: 4),
+                const Text(
+                  '离线',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: CupertinoColors.systemOrange,
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
               // 清除翻译按钮
               GestureDetector(
                 onTap: () {
@@ -431,7 +448,7 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
   }
 
   /// 构建主内容区域
-  Widget _buildContentArea(Article article, dynamic translation, bool hasTranslation) {
+  Widget _buildContentArea(Article article, dynamic translation, bool hasTranslation, bool isOffline) {
     // 如果处于翻译模式
     if (hasTranslation && _translationViewMode > 0) {
       return _buildTranslatedContent(article, translation, _translationViewMode);
