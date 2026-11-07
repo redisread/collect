@@ -1,6 +1,6 @@
 import { useArticleStore, SUPPORTED_LANGUAGES } from "@/lib/store/articleStore";
 import type { Article } from "@/lib/types";
-import { useId, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 import { escapeHtml } from "@/lib/utils/sanitize";
 
 interface ArticleToolbarProps {
@@ -17,6 +17,11 @@ export function ArticleToolbar({ article, onOpenNotes }: ArticleToolbarProps) {
   const menuId = useId();
   const menu = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const closeOnResize = () => menu.current?.hidePopover();
+    window.addEventListener("resize", closeOnResize);
+    return () => window.removeEventListener("resize", closeOnResize);
+  }, []);
   const busy = isExtracting || isTranslating;
   const buttonClass = "min-h-10 rounded-lg px-3 text-sm transition-colors duration-150 hover:bg-[var(--bg-card-hover)] disabled:opacity-50";
 
