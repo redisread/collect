@@ -6,13 +6,13 @@ import { useFeedStore } from "../lib/store/feedStore";
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
-it("accepts feed drops, highlights the folder and forwards the move", async () => {
+it.each(["folder", null])("accepts feed drops into %s without shifting the target", async folderId => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
   const move = vi.spyOn(useFeedStore.getState(), "moveFeedToFolder").mockResolvedValue();
-  await act(async () => root.render(<FeedDropZone folderId="folder">文学</FeedDropZone>));
+  await act(async () => root.render(<FeedDropZone folderId={folderId}>文学</FeedDropZone>));
   const zone = container.firstElementChild!;
   function drag(type: string) {
     const event = new Event(type, { bubbles: true, cancelable: true });
@@ -25,8 +25,9 @@ it("accepts feed drops, highlights the folder and forwards the move", async () =
   await act(async () => { zone.dispatchEvent(over); });
   expect(over.defaultPrevented).toBe(true);
   expect(zone.textContent).toContain("松开");
+  expect(zone.querySelector('[role="status"]')?.className).toBe("sr-only");
   await act(async () => { zone.dispatchEvent(drag("drop")); });
-  expect(move).toHaveBeenCalledWith("feed", "folder");
+  expect(move).toHaveBeenCalledWith("feed", folderId);
   expect(zone.textContent).not.toContain("松开");
   await act(async () => root.unmount());
   container.remove();

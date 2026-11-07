@@ -26,5 +26,5 @@ export function FeedDropZone({ folderId, children }: { folderId: string | null; 
       void useFeedStore.getState().moveFeedToFolder(event.dataTransfer.getData(FEED_DRAG_TYPE), folderId);
     }}
     className={cn("rounded-xl border border-transparent transition-colors duration-150", over && "!border-[var(--accent)] bg-[var(--accent-light)]")}
-  >{children}{over && <span className="block px-3 pb-1 text-xs text-[var(--text-primary)]">松开以移动到{folderId ? "此文件夹" : "未分类"}</span>}</div>;
+  >{children}{over && <span role="status" className="sr-only">松开以移动到{folderId ? "此文件夹" : "未分类"}</span>}</div>;
 }
