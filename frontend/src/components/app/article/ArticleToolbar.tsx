@@ -33,7 +33,7 @@ export function ArticleToolbar({ article, onOpenNotes }: ArticleToolbarProps) {
           value={targetLanguage}
           disabled={busy}
           onChange={event => setTargetLanguage(event.target.value)}
-          className="min-h-10 min-w-0 max-w-36 flex-1 rounded-lg border border-[var(--border)] bg-[var(--bg-main)] px-2 text-sm"
+          className="min-h-10 min-w-28 max-w-36 flex-1 rounded-lg border border-[var(--border)] bg-[var(--bg-main)] px-2 text-sm"
         >
           {SUPPORTED_LANGUAGES.map(lang => <option key={lang.code} value={lang.code}>{lang.label}</option>)}
         </select>

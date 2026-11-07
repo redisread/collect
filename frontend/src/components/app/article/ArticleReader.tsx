@@ -393,7 +393,7 @@ export function ArticleReader() {
 												setViewMode(modes[next]);
 												document.getElementById(`reader-tab-${modes[next]}`)?.focus();
 											}}
-											className={cn("min-h-10 rounded-lg px-4 text-sm transition-colors duration-150",
+											className={cn("min-h-10 whitespace-nowrap rounded-lg px-3 text-sm transition-colors duration-150",
 												viewMode === mode ? "bg-[var(--bg-main)] text-[var(--text-primary)] shadow-sm" : "text-[var(--text-secondary)]")}>
 											{["原文", "双语", "译文"][index]}
 										</button>
