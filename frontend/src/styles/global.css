@@ -3,14 +3,15 @@
 /* ===== Design Tokens / CSS Variables ===== */
 :root {
 	/* Brand */
-	--accent: #FF6B35;
-	--accent-light: #FFF0E8;
-	--accent-hover: #E85A24;
+	--brand-yellow: #F3CD54;
+	--accent: #8A6500;
+	--accent-light: #FFF4C6;
+	--accent-hover: #705200;
 
 	/* Text */
 	--text-primary: #1A1A1A;
-	--text-secondary: #777777;
-	--text-tertiary: #AAAAAA;
+	--text-secondary: #666666;
+	--text-tertiary: #707070;
 
 	/* Backgrounds */
 	--bg-main: #FFFFFF;
@@ -67,7 +68,7 @@
 .dark {
 	--text-primary: #E0E0E0;
 	--text-secondary: #999999;
-	--text-tertiary: #666666;
+	--text-tertiary: #999999;
 
 	--bg-main: #1A1A1A;
 	--bg-sidebar: #222222;
@@ -266,4 +267,14 @@ body {
 ::selection {
 	background: var(--accent-light);
 	color: var(--accent);
+}
+
+/* Reader controls stay above clipped columns via the native popover top layer. */
+.article-actions { position: fixed; inset: auto; margin: 0; width: 200px; max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); overflow-y: auto; overscroll-behavior: contain; }
+.article-content .translation-text { display: block; margin-block: .5em 1em; padding-inline-start: .85em; border-inline-start: 2px solid var(--brand-yellow); color: var(--text-secondary); font-size: .95em; font-weight: 400; }
+.article-content { overflow-wrap: anywhere; }
+.article-content img { max-width: 100%; height: auto; }
+:where(button, select, a):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
 }

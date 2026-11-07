@@ -28,6 +28,7 @@ export default function LoginForm() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-[var(--bg-main)]">
       <div className="w-full max-w-sm px-6">
+        <img src="/collect.svg" width="48" height="48" alt="" className="mx-auto mb-4" />
         <h1 className="text-2xl font-bold text-center mb-2 text-[var(--text-primary)]">Collect</h1>
         <p className="text-sm text-center text-[var(--text-tertiary)] mb-8">登录你的账号</p>
 
@@ -40,7 +41,7 @@ export default function LoginForm() {
               onChange={(e) => setEmail(e.target.value)}
               required
               autoComplete="email"
-              className="w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] text-sm outline-none focus:border-[#FF6B35] transition-colors"
+              className="w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] text-sm outline-none focus:border-[var(--accent)] transition-colors"
             />
           </div>
           <div>
@@ -51,7 +52,7 @@ export default function LoginForm() {
               onChange={(e) => setPassword(e.target.value)}
               required
               autoComplete="current-password"
-              className="w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] text-sm outline-none focus:border-[#FF6B35] transition-colors"
+              className="w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] text-sm outline-none focus:border-[var(--accent)] transition-colors"
             />
           </div>
 
@@ -62,7 +63,7 @@ export default function LoginForm() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2 rounded-lg bg-[#FF6B35] text-white text-sm font-medium hover:bg-[#e55a25] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            className="w-full py-2 rounded-lg bg-[var(--accent)] text-white text-sm font-medium hover:bg-[var(--accent-hover)] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {loading ? "登录中..." : "登录"}
           </button>
@@ -70,7 +71,7 @@ export default function LoginForm() {
 
         <p className="text-sm text-center text-[var(--text-tertiary)] mt-6">
           没有账号？{" "}
-          <a href="/register" className="text-[#FF6B35] hover:underline">
+          <a href="/register" className="text-[var(--accent)] hover:underline">
             去注册
           </a>
         </p>

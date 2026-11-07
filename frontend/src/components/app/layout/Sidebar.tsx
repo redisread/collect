@@ -34,7 +34,8 @@ export function Sidebar() {
 		<div className="flex flex-col h-full bg-[var(--bg-sidebar)] border-r border-[var(--border)]">
 			{/* 顶部工具栏 */}
 			<div className="flex items-center justify-between px-3 pt-4 pb-2 shrink-0">
-				<h1 className="text-sm font-semibold text-[var(--text-primary)] tracking-tight">
+				<h1 className="flex items-center gap-2 text-sm font-semibold text-[var(--text-primary)] tracking-tight">
+					<img src="/collect.svg" width="28" height="28" alt="" />
 					Collect
 				</h1>
 				<div className="flex items-center gap-1">
