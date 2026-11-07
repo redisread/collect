@@ -3,6 +3,18 @@ import { load, type CheerioAPI } from "cheerio/slim";
 const BLOCKS = "p,h1,h2,h3,h4,h5,h6,li,blockquote,figcaption,td,th,div,section,article";
 const SKIP = "script,style,pre,code,kbd,samp,svg,math,textarea,img,picture,video,audio,source,[translate=no]";
 
+export class TranslationError extends Error {
+  readonly code: string;
+  readonly upstreamStatus?: number;
+
+  constructor(code: string, message: string, upstreamStatus?: number) {
+    super(message);
+    this.name = "TranslationError";
+    this.code = code;
+    this.upstreamStatus = upstreamStatus;
+  }
+}
+
 export function splitTranslationText(text: string, size = 1200): string[] {
   const chars = Array.from(text);
   const chunks: string[] = [];
@@ -25,18 +37,47 @@ export async function googleTranslate(text: string, target: string, source: stri
           await new Promise(resolve => setTimeout(resolve, 500));
           continue;
         }
-        throw new Error("Google 翻译暂时不可用，请稍后重试");
+        throw new TranslationError(
+          response.status === 429 ? "google_rate_limited" : "google_http_error",
+          response.status === 429 ? "Google 翻译请求过于频繁，请稍后重试" : "Google 翻译服务返回错误，请稍后重试",
+          response.status,
+        );
       }
       const data = await response.json() as unknown;
-      if (!Array.isArray(data) || !Array.isArray(data[0])) throw new Error("翻译服务返回了无效结果");
+      if (!Array.isArray(data) || !Array.isArray(data[0])) throw new TranslationError("invalid_response", "翻译服务返回了无效结果，请重试");
       translated = data[0].map((item: unknown) => Array.isArray(item) && typeof item[0] === "string" ? item[0] : "").join("");
       if (typeof data[2] === "string") detectedLang = data[2];
-      if (!translated.trim()) throw new Error("翻译服务返回了空结果");
+      if (!translated.trim()) throw new TranslationError("empty_response", "翻译服务返回了空结果，请重试");
       break;
     }
     parts.push(translated);
   }
   return { translated: parts.join(""), detectedLang };
+}
+
+/** Use the original DOM as the template when a run is long or Google alters its markup. */
+async function translateContentNodes(
+  source: CheerioAPI,
+  translate: (text: string) => Promise<{ translated: string; detectedLang: string }>,
+): Promise<{ html: string; text: string; detectedLang: string }> {
+  let detectedLang = "auto";
+  for (const node of source.root().contents().toArray()) {
+    if (node.type === "text" && node.data.trim()) {
+      const result = await translate(node.data.trim());
+      const leading = node.data.match(/^\s*/)?.[0] ?? "";
+      const trailing = node.data.match(/\s*$/)?.[0] ?? "";
+      // Assign text data so any markup returned by Google is escaped on serialization.
+      node.data = leading + result.translated + trailing;
+      detectedLang = result.detectedLang;
+    } else if ("tagName" in node) {
+      const contents = source(node).html() || "";
+      if (!contents.trim()) continue;
+      const result = await translateInlineHtml(contents, translate);
+      source(node).html(result.html);
+      detectedLang = result.detectedLang;
+    }
+  }
+  return { html: source.html(), text: source.text(), detectedLang };
 }
 
 /** Long runs are split at DOM boundaries so a request can never cut through a tag. */
@@ -46,23 +87,7 @@ async function translateInlineHtml(
 ): Promise<{ html: string; text: string; detectedLang: string }> {
   const source = load(html, {}, false);
   if (Array.from(html).length > 1200) {
-    let detectedLang = "auto";
-    for (const node of source.root().contents().toArray()) {
-      if (node.type === "text" && node.data.trim()) {
-        const result = await translate(node.data.trim());
-        const leading = node.data.match(/^\s*/)?.[0] ?? "";
-        const trailing = node.data.match(/\s*$/)?.[0] ?? "";
-        node.data = leading + result.translated + trailing;
-        detectedLang = result.detectedLang;
-      } else if ("tagName" in node) {
-        const contents = source(node).html() || "";
-        if (!contents.trim()) continue;
-        const result = await translateInlineHtml(contents, translate);
-        source(node).html(result.html);
-        detectedLang = result.detectedLang;
-      }
-    }
-    return { html: source.html(), text: source.text(), detectedLang };
+    return translateContentNodes(source, translate);
   }
   const result = await translate(html);
   const output = load(result.translated, {}, false);
@@ -70,7 +95,7 @@ async function translateInlineHtml(
   const outputElements = output("*").toArray().filter(node => "tagName" in node);
   if (sourceElements.length !== outputElements.length ||
       sourceElements.some((node, index) => node.tagName !== outputElements[index].tagName)) {
-    throw new Error("翻译结果的文章结构不完整");
+    return translateContentNodes(source, translate);
   }
   sourceElements.forEach((node, index) => {
     outputElements[index].attribs = { ...node.attribs };
@@ -128,8 +153,8 @@ export async function translateHtml(
   }
 
   const template = renderChildren(original.root().contents().toArray());
-  if (!jobs.length) throw new Error("未找到可翻译的文本");
-  if (jobs.length > 600) throw new Error("文章段落过多");
+  if (!jobs.length) throw new TranslationError("empty_content", "未找到可翻译的文本");
+  if (jobs.length > 600) throw new TranslationError("too_many_segments", "文章段落过多，暂时无法全文翻译");
   const results: { html: string; text: string; detectedLang: string }[] = new Array(jobs.length);
   let index = 0;
   await Promise.all(Array.from({ length: Math.min(4, jobs.length) }, async () => {

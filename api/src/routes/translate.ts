@@ -6,7 +6,7 @@ import { articles, translationHistory } from "../db/schema";
 import { authMiddleware } from "../middleware/auth";
 import type { CloudflareEnv } from "../types";
 import { SUPPORTED_LANG_CODES, DEFAULT_TARGET_LANG } from "../config/languages";
-import { googleTranslate, translateHtml } from "../lib/translate";
+import { googleTranslate, translateHtml, TranslationError } from "../lib/translate";
 
 const translateRoute = new Hono<{ Bindings: CloudflareEnv; Variables: { userId: string } }>();
 translateRoute.use("/*", authMiddleware);
@@ -51,9 +51,17 @@ translateRoute.post("/", async c => {
       });
     } catch { console.warn(JSON.stringify({ event: "translation_history_write_failed" })); }
     return c.json({ success: true, data: result });
-  } catch {
+  } catch (error) {
+    const timedOut = controller.signal.aborted || (error instanceof Error && ["TimeoutError", "AbortError"].includes(error.name));
+    const code = timedOut ? "translation_timeout" : error instanceof TranslationError ? error.code : "translation_failed";
+    const message = timedOut ? "翻译请求超时，请稍后重试" :
+      error instanceof TranslationError ? error.message : "文章翻译失败，请重试";
+    console.warn(JSON.stringify({
+      event: "translation_failed", code, durationMs: Date.now() - now,
+      upstreamStatus: error instanceof TranslationError ? error.upstreamStatus : undefined,
+    }));
     controller.abort();
-    return c.json({ success: false, error: "Google 翻译暂时不可用或请求超时，请稍后重试" }, 502);
+    return c.json({ success: false, error: message, code }, 502);
   } finally { clearTimeout(timeout); }
 });
 

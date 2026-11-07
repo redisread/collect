@@ -5,6 +5,25 @@ import { googleTranslate, splitTranslationText, translateHtml } from "../lib/tra
 afterEach(() => vi.unstubAllGlobals());
 
 describe("article translation", () => {
+  it("recovers when Google omits emphasis tags instead of failing the whole article", async () => {
+    const translate = vi.fn(async (text: string) => ({
+      translated: text.includes("<em>") ? "汉明在《科学与工程的艺术》中写道。" : "译" + text,
+      detectedLang: "en",
+    }));
+    const result = await translateHtml('<p>Hamming writes in <em>The Art of Science and Engineering</em>:</p>', "zh-CN", translate);
+    const $ = load(result.translatedHtml);
+    expect($("em").text()).toBe("译The Art of Science and Engineering");
+    expect($("p").text()).toContain("译Hamming writes in");
+    expect(load(result.bilingualHtml)(".translation-text em")).toHaveLength(1);
+  });
+
+  it("restores original link destinations and escapes markup injected into plain-text fallback", async () => {
+    const translate = vi.fn(async () => ({ translated: "<script>bad()</script>", detectedLang: "en" }));
+    const result = await translateHtml('<p>Read <a href="https://example.com">this</a>.</p>', "zh-CN", translate);
+    const $ = load(result.translatedHtml);
+    expect($("a").attr("href")).toBe("https://example.com");
+    expect($("script")).toHaveLength(0);
+  });
   it("preserves inline links, nested lists, media and code without duplicating originals", async () => {
     const translate = vi.fn(async (text: string) => ({ translated: "译" + text, detectedLang: "en" }));
     const result = await translateHtml('<h2>Title</h2><p>Hello <a href="https://example.com">world</a>.</p><ul><li>Parent<ul><li>Child</li></ul></li></ul><img src="https://example.com/p.png"><pre><code>const a = 1</code></pre>', "zh-CN", translate);
