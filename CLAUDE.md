@@ -18,8 +18,8 @@ Note: the directory may be named `folio`, but the app/package/product name is `c
 ## Repo Layout
 
 ```text
-api/          Hono API Worker, D1 schema/migrations, auth, feed sync, routes
-frontend/     Astro server-rendered Web app with React islands
+api/          Hono API, D1 schema/migrations, auth, feed sync, routes
+frontend/     Astro Web app, React islands, unified Worker entry/config
 mobile/       Flutter app
 packages/     shared types/config packages
 .github/      CI and deploy workflows
@@ -27,12 +27,10 @@ packages/     shared types/config packages
 
 ## Current Stack
 
-- Root: pnpm workspace, Node >= 20, pnpm >= 9
+- Root: pnpm workspace, Node >= 22.13, pnpm >= 11.24
 - API: Hono, Cloudflare Workers, D1, KV, R2, Drizzle ORM, Better Auth, Vitest
-- Frontend: Astro 5.7, `@astrojs/cloudflare`, React 19, Tailwind CSS 4, Cloudflare Pages
+- Frontend: Astro 7, `@astrojs/cloudflare`, React 19, Tailwind CSS 4, Workers Static Assets
 - Mobile: Flutter 3 stable, Riverpod, go_router
-
-README may mention Astro 6; trust `frontend/package.json` and `frontend/astro.config.mjs` unless you are explicitly updating the frontend.
 
 ## Commands
 
@@ -57,7 +55,6 @@ pnpm --filter api lint
 pnpm --filter api test
 pnpm --filter api db:generate
 pnpm --filter api db:migrate:local
-pnpm --filter api deploy
 ```
 
 Frontend:
@@ -66,6 +63,7 @@ Frontend:
 pnpm --filter frontend dev
 pnpm --filter frontend build
 pnpm --filter frontend type-check
+pnpm --filter frontend deploy:dry-run
 pnpm --filter frontend deploy
 ```
 
@@ -80,29 +78,21 @@ cd mobile && flutter run
 
 ## Cloudflare Deployment
 
-API:
+Unified Worker:
 
-- Worker name: `collect-api`
-- Config: `api/wrangler.toml`
-- Entrypoint: `api/src/index.ts`
-- D1 binding: `DB`, database `collect-db`
-- KV binding: `COLLECT_KV`
-- R2 binding: `COLLECT_R2`
-- Cron: hourly feed/digest work via `api/src/cron/handlers.ts`
-
-Frontend:
-
-- Pages project: `collect-frontend`
-- Config: `frontend/wrangler.toml`
-- Build output: `frontend/dist`
-- Astro output: `server`
-- `PUBLIC_API_URL` is supplied by CI secret `API_URL`
+- Worker name: `collect`
+- Config: `frontend/wrangler.jsonc` (the deployment source of truth)
+- Entrypoint: `frontend/src/worker.ts`
+- `/api/*`: Hono app imported from `api/src/app.ts`
+- Other routes: Astro SSR/SSG, React Islands and Static Assets
+- Bindings: `DB`, `COLLECT_KV`, `SESSION`, `COLLECT_R2`, `FEED_SYNC_QUEUE`, `ASSETS`
+- Cron: Feed Queue dispatch every five minutes; digest scan hourly
+- No Durable Objects or Workflows until a concrete realtime/strong-consistency or multi-step durable requirement exists
 
 CI:
 
-- `api/**` changes trigger `.github/workflows/api.yml`
-- `frontend/**` or `packages/**` changes trigger `.github/workflows/frontend.yml`
-- PRs to `main` run `.github/workflows/lint.yml`
+- PRs and pushes to `main` run `.github/workflows/cloudflare.yml`
+- Only pushes to `main` deploy, after API/Web checks, tests, build and Wrangler dry-run pass
 - `mobile/**` changes trigger `.github/workflows/mobile.yml`
 
 ## API Rules
@@ -119,7 +109,7 @@ CI:
 - Frontend runs through Astro with Cloudflare adapter and React islands.
 - Keep server-rendered pages in `frontend/src/pages/`; client state belongs in small React components.
 - Global styles are in `frontend/src/styles/global.css`.
-- API clients should use `PUBLIC_API_URL`; do not hardcode production API URLs in components.
+- Browser API clients must use same-origin `/api/*`; do not add a public API base URL or credentialed wildcard CORS.
 - After UI changes, verify desktop and mobile widths and check for hydration warnings.
 
 ## Mobile Rules
@@ -142,7 +132,7 @@ Before PR handoff, report exactly which checks ran and which were skipped.
 
 ## Engineering Rules
 
-- Keep changes scoped; this is a monorepo with independent API, Web, and mobile deploys.
+- Keep changes scoped; Web and API share one Worker deployment while mobile remains independent.
 - Do not commit secrets, Wrangler credentials, production tokens, or local `.dev.vars` values.
 - Do not run production D1 migrations or deploys without explicit human approval.
 - Avoid broad refactors while fixing product bugs; prefer small PRs with clear validation.
@@ -151,6 +141,6 @@ Before PR handoff, report exactly which checks ran and which were skipped.
 
 ## Known Gotchas
 
-- `api/wrangler.toml` currently has placeholder-looking local resource IDs (`local-collect-db`, `local-collect-kv`). Confirm real Cloudflare resource config before production deploy work.
+- First production cutover requires explicit creation of `collect-feed-sync` and its DLQ plus required secrets on Worker `collect`.
 - There are duplicate-looking migration names (`0000_*`, `0001_*`, `0002_*`). Check `_journal.json` and current D1 state before creating or applying new migrations.
-- README says Astro 6, but `frontend/package.json` currently pins Astro 5.7. Do not assume an upgrade happened unless package files changed.
+- The pnpm workspace pins Picomatch 4.x to one version because duplicate CommonJS copies can escape the Cloudflare Vite plugin optimizer and fail inside workerd.

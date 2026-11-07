@@ -1,5 +1,7 @@
 # Collect API 架构改造总结
 
+> 历史记录：本文描述早期 API 重构设想，其中部分 V2 路由与 D1 内部队列从未挂载到生产入口。当前部署架构、Queue 调度、发布与回滚规则以 [`docs/decisions/0001-cloudflare-native-fullstack.md`](../docs/decisions/0001-cloudflare-native-fullstack.md) 为准。
+
 ## 改造完成内容
 
 ### 1. 数据模型优化 ✅

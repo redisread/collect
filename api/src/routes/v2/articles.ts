@@ -182,7 +182,7 @@ articlesV2Route.get("/:id", async (c) => {
         .update(articles)
         .set({
           isRead: true,
-          readAt: new Date().toISOString(),
+          lastReadAt: new Date().toISOString(),
         })
         .where(eq(articles.id, id));
 
@@ -245,7 +245,7 @@ articlesV2Route.post(
 
           await db
             .update(articles)
-            .set({ isRead: true, readAt: now })
+            .set({ isRead: true, lastReadAt: now })
             .where(
               and(
                 eq(articles.userId, userId),
@@ -262,7 +262,7 @@ articlesV2Route.post(
 
           await db
             .update(articles)
-            .set({ isRead: false, readAt: null })
+            .set({ isRead: false, lastReadAt: null })
             .where(
               and(
                 eq(articles.userId, userId),
@@ -294,7 +294,7 @@ articlesV2Route.post(
 
           await db
             .update(articles)
-            .set({ isRead: true, readAt: now })
+            .set({ isRead: true, lastReadAt: now })
             .where(and(...conditions));
           break;
         }
@@ -404,7 +404,7 @@ articlesV2Route.put("/:id", async (c) => {
 
     if (body.isRead !== undefined) {
       updates.isRead = body.isRead;
-      updates.readAt = body.isRead ? new Date().toISOString() : null;
+      updates.lastReadAt = body.isRead ? new Date().toISOString() : null;
     }
     if (body.isStarred !== undefined) updates.isStarred = body.isStarred;
     if (body.isReadLater !== undefined) updates.isReadLater = body.isReadLater;

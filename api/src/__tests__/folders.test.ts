@@ -2,8 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Hono } from "hono";
 import foldersRoute from "../routes/folders";
 import { getDb } from "../db";
-import { folders } from "../db/schema";
-import * as schema from "../db/schema";
+import type { CloudflareEnv } from "../types";
 
 // Mock dependencies
 vi.mock("../db", () => ({
@@ -18,12 +17,17 @@ vi.mock("../middleware/auth", () => ({
 }));
 
 describe("Folders API", () => {
-  let app: Hono;
+  let app: Hono<{ Bindings: CloudflareEnv }>;
   let mockDb: any;
+  const request = (input: string, init?: RequestInit) => app.request(
+    input,
+    init,
+    { DB: {} as D1Database } as CloudflareEnv,
+  );
 
   beforeEach(() => {
     vi.clearAllMocks();
-    app = new Hono();
+    app = new Hono<{ Bindings: CloudflareEnv }>();
     app.route("/api/folders", foldersRoute);
 
     mockDb = {
@@ -51,7 +55,7 @@ describe("Folders API", () => {
 
       mockDb.orderBy.mockResolvedValue(mockFolders);
 
-      const res = await app.request("/api/folders", {
+      const res = await request("/api/folders", {
         headers: { "x-user-id": "test-user-id" },
       });
 
@@ -64,7 +68,7 @@ describe("Folders API", () => {
     it("should handle database errors", async () => {
       mockDb.orderBy.mockRejectedValue(new Error("Database error"));
 
-      const res = await app.request("/api/folders");
+      const res = await request("/api/folders");
 
       expect(res.status).toBe(500);
       const json = await res.json() as any;
@@ -87,7 +91,7 @@ describe("Folders API", () => {
       mockDb.orderBy.mockResolvedValue([]);
       mockDb.returning.mockResolvedValue([newFolder]);
 
-      const res = await app.request("/api/folders", {
+      const res = await request("/api/folders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: "Technology" }),
@@ -100,7 +104,7 @@ describe("Folders API", () => {
     });
 
     it("should validate folder name is not empty", async () => {
-      const res = await app.request("/api/folders", {
+      const res = await request("/api/folders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: "" }),
@@ -124,7 +128,7 @@ describe("Folders API", () => {
       mockDb.orderBy.mockResolvedValue([]);
       mockDb.returning.mockResolvedValue([newFolder]);
 
-      const res = await app.request("/api/folders", {
+      const res = await request("/api/folders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: "Tech", color: "#123456", icon: "folder-icon" }),
@@ -145,9 +149,9 @@ describe("Folders API", () => {
         userId: "test-user-id",
       };
 
-      mockDb.returning.mockResolvedValue([mockFolder]);
+      mockDb.where.mockResolvedValueOnce([mockFolder]);
 
-      const res = await app.request("/api/folders/folder-1");
+      const res = await request("/api/folders/folder-1");
 
       expect(res.status).toBe(200);
       const json = await res.json() as any;
@@ -156,9 +160,9 @@ describe("Folders API", () => {
     });
 
     it("should return 404 for non-existent folder", async () => {
-      mockDb.returning.mockResolvedValue([]);
+      mockDb.where.mockResolvedValueOnce([]);
 
-      const res = await app.request("/api/folders/non-existent");
+      const res = await request("/api/folders/non-existent");
 
       expect(res.status).toBe(404);
       const json = await res.json() as any;
@@ -172,11 +176,10 @@ describe("Folders API", () => {
       const existingFolder = { id: "folder-1", name: "Old Name", userId: "test-user-id" };
       const updatedFolder = { id: "folder-1", name: "New Name", userId: "test-user-id" };
 
-      mockDb.returning
-        .mockResolvedValueOnce([existingFolder])
-        .mockResolvedValueOnce([updatedFolder]);
+      mockDb.where.mockResolvedValueOnce([existingFolder]);
+      mockDb.returning.mockResolvedValueOnce([updatedFolder]);
 
-      const res = await app.request("/api/folders/folder-1", {
+      const res = await request("/api/folders/folder-1", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: "New Name" }),
@@ -189,9 +192,9 @@ describe("Folders API", () => {
     });
 
     it("should return 404 when updating non-existent folder", async () => {
-      mockDb.returning.mockResolvedValue([]);
+      mockDb.where.mockResolvedValueOnce([]);
 
-      const res = await app.request("/api/folders/non-existent", {
+      const res = await request("/api/folders/non-existent", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: "New Name" }),
@@ -207,9 +210,9 @@ describe("Folders API", () => {
     it("should delete a folder", async () => {
       const existingFolder = { id: "folder-1", name: "Tech", userId: "test-user-id" };
 
-      mockDb.returning.mockResolvedValue([existingFolder]);
+      mockDb.where.mockResolvedValueOnce([existingFolder]);
 
-      const res = await app.request("/api/folders/folder-1", {
+      const res = await request("/api/folders/folder-1", {
         method: "DELETE",
       });
 
@@ -220,9 +223,9 @@ describe("Folders API", () => {
     });
 
     it("should return 404 when deleting non-existent folder", async () => {
-      mockDb.returning.mockResolvedValue([]);
+      mockDb.where.mockResolvedValueOnce([]);
 
-      const res = await app.request("/api/folders/non-existent", {
+      const res = await request("/api/folders/non-existent", {
         method: "DELETE",
       });
 

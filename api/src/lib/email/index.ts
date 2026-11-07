@@ -29,7 +29,7 @@ export async function sendDigestEmail(
 
   try {
     const { error } = await resend.emails.send({
-      from: "Collect <digest@collect.app>",
+      from: "Collect <digest@gomate.live>",
       to: user.email,
       subject,
       html,

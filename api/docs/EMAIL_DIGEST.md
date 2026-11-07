@@ -66,11 +66,14 @@ lastDigestSentAt: string       // 上次发送时间
 
 ## 配置说明
 
-### wrangler.toml
+### frontend/wrangler.jsonc
 
-```toml
-[triggers]
-crons = ["0 * * * *"]  # 每小时运行一次
+```jsonc
+{
+  "triggers": {
+    "crons": ["*/5 * * * *", "0 * * * *"]
+  }
+}
 ```
 
 Cron 表达式说明：
@@ -81,9 +84,10 @@ Cron 表达式说明：
 ### 环境变量
 
 ```bash
-# 添加到 wrangler.toml 或 .dev.vars
+# FRONTEND_URL 写入 frontend/wrangler.jsonc 的 vars
+# RESEND_API_KEY 通过 wrangler secret put 设置，切勿提交明文
 RESEND_API_KEY = "your_resend_api_key"
-FRONTEND_URL = "https://collect.app"
+FRONTEND_URL = "https://collect.jiahongw.com"
 ```
 
 ## API 使用示例

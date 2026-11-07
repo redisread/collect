@@ -1,0 +1,75 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "collect",
+  "routes": [{ "pattern": "collect.jiahongw.com", "custom_domain": true }],
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-08-30",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./dist/client",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api", "/api/*"]
+  },
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 0.05
+    }
+  },
+  "vars": {
+    "FRONTEND_URL": "https://collect.jiahongw.com"
+  },
+  "secrets": {
+    "required": ["BETTER_AUTH_SECRET", "RESEND_API_KEY"]
+  },
+  "triggers": {
+    "crons": ["*/5 * * * *", "0 * * * *"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "collect-db",
+      "database_id": "c795f10a-e138-4b9d-bed4-07c8a0a2117a",
+      "migrations_dir": "../api/drizzle/migrations"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "COLLECT_KV",
+      "id": "c11fb70b8ef34b4c93063c4a6008c62c"
+    },
+    {
+      "binding": "SESSION",
+      "id": "2306ca7bb81b4db39208b0b213e2d3a8"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "COLLECT_R2",
+      "bucket_name": "collect-cache"
+    }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "FEED_SYNC_QUEUE",
+        "queue": "collect-feed-sync"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "collect-feed-sync",
+        "max_batch_size": 10,
+        "max_batch_timeout": 5,
+        "max_retries": 3,
+        "retry_delay": 60,
+        "dead_letter_queue": "collect-feed-sync-dlq"
+      }
+    ]
+  }
+}

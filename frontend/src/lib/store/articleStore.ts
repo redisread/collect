@@ -11,9 +11,7 @@ import type {
 // Re-export types for backward compatibility
 export type { ArticleListItem, TranslationResult, TranslationSegment, Annotation };
 
-const API_BASE = typeof import.meta !== 'undefined' && (import.meta as unknown as { env: Record<string, string> }).env?.PUBLIC_API_URL
-  ? (import.meta as unknown as { env: Record<string, string> }).env.PUBLIC_API_URL
-  : "http://localhost:8787";
+const API_BASE = "";
 
 // 支持的目标语言（与 api/src/config/languages.ts 保持一致）
 export const SUPPORTED_LANGUAGES = [

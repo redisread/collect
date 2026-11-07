@@ -10,9 +10,8 @@
     "build": "turbo build",
     "build:api": "turbo build --filter=api",
     "build:frontend": "turbo build --filter=frontend",
-    "deploy:api": "turbo deploy --filter=api",
-    "deploy:frontend": "turbo deploy --filter=frontend",
-    "deploy": "turbo deploy",
+    "deploy": "pnpm --filter frontend deploy",
+    "deploy:dry-run": "pnpm --filter frontend deploy:dry-run",
     "lint": "turbo lint",
     "type-check": "turbo type-check",
     "clean": "turbo clean && rm -rf node_modules",
@@ -24,8 +23,8 @@
     "typescript": "^5.7.4"
   },
   "engines": {
-    "node": ">=20",
-    "pnpm": ">=9"
+    "node": ">=22.13",
+    "pnpm": ">=11.24"
   },
-  "packageManager": "pnpm@9.0.0"
+  "packageManager": "pnpm@11.24.0"
 }
