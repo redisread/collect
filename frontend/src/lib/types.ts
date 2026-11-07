@@ -24,6 +24,7 @@ export interface Feed {
   description: string | null;
   faviconUrl: string | null;
   lastFetchedAt: string | null;
+  lastErrorAt?: string | null;
   sortOrder: number | null;
   createdAt: string | null;
   updatedAt: string | null;

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { cn } from "../src/lib/utils/cn";
-import { formatRelativeTime, formatFullDate } from "../src/lib/utils/date";
+import { cn } from "../lib/utils/cn";
+import { formatRelativeTime, formatFullDate } from "../lib/utils/date";
 
 describe("Utility Functions", () => {
   describe("cn", () => {

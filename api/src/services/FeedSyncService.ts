@@ -1,4 +1,4 @@
-import { eq, and, sql, desc, asc, inArray } from "drizzle-orm";
+import { eq, and, sql, desc, asc, inArray, isNull, or } from "drizzle-orm";
 import type { DB } from "../db";
 import { feeds, articles, fetchQueue, userPreferences, FeedHealthStatus, QueueStatus } from "../db/schema";
 import type { ParsedArticle, ParsedFeed } from "../lib/rss/parser";
@@ -21,6 +21,14 @@ export interface ParsedFeedWithMeta extends ParsedFeed {
   etag?: string;
   lastModified?: string;
   hash?: string;
+}
+
+async function articleIdForUrl(feedId: string, url: string): Promise<string> {
+  const input = new TextEncoder().encode(JSON.stringify([feedId, url]));
+  const digest = await crypto.subtle.digest("SHA-256", input);
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
 }
 
 export class FeedSyncService {
@@ -56,7 +64,7 @@ export class FeedSyncService {
       .where(
         and(
           eq(feeds.isActive, true),
-          sql`${feeds.nextFetchAt} <= ${now}`
+          or(isNull(feeds.nextFetchAt), sql`${feeds.nextFetchAt} <= ${now}`),
         )
       )
       .limit(batchSize);
@@ -74,6 +82,23 @@ export class FeedSyncService {
     }
 
     return feedsToSync.length;
+  }
+
+  /** Return due feed ids for dispatch through Cloudflare Queues. */
+  async listDueFeedIds(batchSize: number = 100): Promise<string[]> {
+    const now = new Date().toISOString();
+    const dueFeeds = await this.db
+      .select({ id: feeds.id })
+      .from(feeds)
+      .where(
+        and(
+          eq(feeds.isActive, true),
+          or(isNull(feeds.nextFetchAt), sql`${feeds.nextFetchAt} <= ${now}`),
+        ),
+      )
+      .limit(batchSize);
+
+    return dueFeeds.map((feed) => feed.id);
   }
 
   /**
@@ -118,28 +143,38 @@ export class FeedSyncService {
    * Sync a specific feed immediately (for manual refresh)
    */
   async syncFeed(feedId: string, userId: string): Promise<SyncResult> {
-    // Create a job for this feed
-    const [job] = await this.db
-      .insert(fetchQueue)
-      .values({
-        feedId,
-        userId,
-        priority: 10, // High priority for manual refresh
-        status: QueueStatus.PENDING,
-      })
-      .returning();
+    const [feed] = await this.db
+      .select()
+      .from(feeds)
+      .where(and(eq(feeds.id, feedId), eq(feeds.userId, userId)));
 
-    return await this.processSingleFeed(job);
+    if (!feed) {
+      return { feedId, error: "Feed not found", duration: 0 };
+    }
+
+    return this.syncFeedRecord(feed);
+  }
+
+  /** Process a Cloudflare Queue message using D1 as the source of truth. */
+  async syncQueuedFeed(feedId: string): Promise<SyncResult> {
+    const [feed] = await this.db
+      .select()
+      .from(feeds)
+      .where(eq(feeds.id, feedId));
+
+    // A feed deleted after enqueue is already in the desired final state.
+    if (!feed) {
+      return { feedId, newArticles: 0, duration: 0 };
+    }
+
+    return this.syncFeedRecord(feed);
   }
 
   /**
    * Process a single feed sync job
    */
   private async processSingleFeed(job: typeof fetchQueue.$inferSelect): Promise<SyncResult> {
-    const startTime = Date.now();
-
     try {
-      // Get feed configuration
       const [feed] = await this.db
         .select()
         .from(feeds)
@@ -149,6 +184,29 @@ export class FeedSyncService {
         throw new Error("Feed not found");
       }
 
+      const result = await this.syncFeedRecord(feed, false);
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      await this.completeJob(job.id, { newArticles: result.newArticles ?? 0 });
+      return result;
+    } catch (error) {
+      await this.handleSyncError(job, error);
+      return {
+        feedId: job.feedId,
+        error: error instanceof Error ? error.message : "Unknown error",
+        duration: 0,
+      };
+    }
+  }
+
+  private async syncFeedRecord(
+    feed: typeof feeds.$inferSelect,
+    updateErrorState = true,
+  ): Promise<SyncResult> {
+    const startTime = Date.now();
+
+    try {
       // Fetch with incremental update headers
       const parsed = await this.fetcher.fetch(feed.feedUrl, {
         etag: feed.lastEtag,
@@ -157,13 +215,12 @@ export class FeedSyncService {
 
       // Content not modified (304)
       if (parsed.notModified) {
-        await this.updateFeedSuccess(feed, 0, 0);
-        await this.completeJob(job.id, { newArticles: 0 });
+        await this.updateFeedSuccess(feed);
         return { feedId: feed.id, newArticles: 0, duration: Date.now() - startTime };
       }
 
       // Get existing article URLs for deduplication
-      const existingUrls = await this.getCachedArticleUrls(feed.id);
+      const existingUrls = await this.getArticleUrls(feed.id);
 
       // Filter new articles
       const newArticles = parsed.articles.filter(
@@ -171,63 +228,61 @@ export class FeedSyncService {
       );
 
       // Insert new articles
-      if (newArticles.length > 0) {
-        await this.insertArticles(feed, newArticles);
-      }
+      const insertedCount = newArticles.length > 0
+        ? await this.insertArticles(feed, newArticles)
+        : 0;
+
+      await this.updateFeedStats(feed.id);
 
       // Update feed status
-      await this.updateFeedSuccess(feed, newArticles.length, 0, {
+      await this.updateFeedSuccess(feed, {
         etag: parsed.etag,
         lastModified: parsed.lastModified,
         contentHash: parsed.hash,
       });
-
-      // Complete job
-      await this.completeJob(job.id, { newArticles: newArticles.length });
 
       // Invalidate caches
       await this.invalidateFeedCache(feed.id, feed.userId);
 
       return {
         feedId: feed.id,
-        newArticles: newArticles.length,
+        newArticles: insertedCount,
         duration: Date.now() - startTime,
       };
     } catch (error) {
-      await this.handleSyncError(job, error);
+      if (updateErrorState) {
+        await this.markFeedSyncError(feed.id, error);
+      }
       return {
-        feedId: job.feedId,
+        feedId: feed.id,
         error: error instanceof Error ? error.message : "Unknown error",
         duration: Date.now() - startTime,
       };
     }
   }
 
+  private async markFeedSyncError(feedId: string, error: unknown): Promise<void> {
+    await this.db
+      .update(feeds)
+      .set({
+        healthStatus: FeedHealthStatus.DEGRADED,
+        consecutiveErrors: sql`${feeds.consecutiveErrors} + 1`,
+        lastErrorMessage: error instanceof Error ? error.message : "Unknown error",
+        lastErrorAt: new Date().toISOString(),
+      })
+      .where(eq(feeds.id, feedId));
+  }
+
   /**
-   * Get cached article URLs for a feed
+   * Read authoritative URLs, including legacy articles with random IDs.
    */
-  private async getCachedArticleUrls(feedId: string): Promise<Set<string>> {
-    const cacheKey = `feed:${feedId}:urls`;
-    const cached = await this.kv.get(cacheKey);
-
-    if (cached) {
-      return new Set(JSON.parse(cached));
-    }
-
-    // Cache miss - query database
+  private async getArticleUrls(feedId: string): Promise<Set<string>> {
     const urls = await this.db
       .select({ url: articles.url })
       .from(articles)
       .where(eq(articles.feedId, feedId));
 
-    const urlSet = new Set(urls.map((u) => u.url));
-
-    // Write to cache (1 hour TTL)
-    await this.kv.put(cacheKey, JSON.stringify([...urlSet]), {
-      expirationTtl: 3600,
-    });
-
-    return urlSet;
+    return new Set(urls.map((u) => u.url));
   }
 
   /**
@@ -236,7 +291,7 @@ export class FeedSyncService {
   private async insertArticles(
     feed: typeof feeds.$inferSelect,
     newArticles: ParsedArticle[]
-  ): Promise<void> {
+  ): Promise<number> {
     // Get user preferences
     const [prefs] = await this.db
       .select({ maxArticlesPerFeed: userPreferences.maxArticlesPerFeed })
@@ -247,9 +302,11 @@ export class FeedSyncService {
 
     // Only keep latest N articles
     const retentionDate = await this.calculateRetentionDate(feed.userId);
-    const articlesToInsert = newArticles
+    const articlesToInsert = await Promise.all(newArticles
       .slice(0, maxArticles)
-      .map((a) => ({
+      .map(async (a) => ({
+        // Queue retries/concurrent consumers must conflict on the same primary key.
+        id: await articleIdForUrl(feed.id, a.url),
         userId: feed.userId,
         feedId: feed.id,
         title: a.title,
@@ -261,15 +318,18 @@ export class FeedSyncService {
         imageUrl: a.imageUrl,
         publishedAt: a.publishedAt,
         retentionDate,
-      }));
+      })));
 
-    await this.db
-      .insert(articles)
-      .values(articlesToInsert)
-      .onConflictDoNothing();
-
-    // Update feed stats
-    await this.updateFeedStats(feed.id);
+    let insertedCount = 0;
+    // Three full article rows stay below D1's 100 bound-parameter limit.
+    for (let offset = 0; offset < articlesToInsert.length; offset += 3) {
+      const inserted = await this.db.insert(articles)
+        .values(articlesToInsert.slice(offset, offset + 3))
+        .onConflictDoNothing()
+        .returning({ id: articles.id });
+      insertedCount += inserted.length;
+    }
+    return insertedCount;
   }
 
   /**
@@ -277,8 +337,6 @@ export class FeedSyncService {
    */
   private async updateFeedSuccess(
     feed: typeof feeds.$inferSelect,
-    newArticles: number,
-    updatedArticles: number,
     meta?: { etag?: string; lastModified?: string; contentHash?: string }
   ): Promise<void> {
     const intervalMinutes = feed.fetchIntervalMinutes ?? 60;
@@ -294,11 +352,9 @@ export class FeedSyncService {
         consecutiveErrors: 0,
         lastErrorMessage: null,
         lastErrorAt: null,
-        lastEtag: meta?.etag ?? null,
-        lastModified: meta?.lastModified ?? null,
-        contentHash: meta?.contentHash ?? null,
-        cachedArticleCount: sql`${feeds.cachedArticleCount} + ${newArticles}`,
-        cachedUnreadCount: sql`${feeds.cachedUnreadCount} + ${newArticles}`,
+        lastEtag: meta ? meta.etag ?? null : feed.lastEtag,
+        lastModified: meta ? meta.lastModified ?? null : feed.lastModified,
+        contentHash: meta ? meta.contentHash ?? null : feed.contentHash,
       })
       .where(eq(feeds.id, feed.id));
   }
@@ -378,19 +434,11 @@ export class FeedSyncService {
    * Update feed statistics
    */
   private async updateFeedStats(feedId: string): Promise<void> {
-    const stats = await this.db
-      .select({
-        total: sql<number>`count(*)`,
-        unread: sql<number>`sum(CASE WHEN is_read = 0 THEN 1 ELSE 0 END)`,
-      })
-      .from(articles)
-      .where(eq(articles.feedId, feedId));
-
     await this.db
       .update(feeds)
       .set({
-        cachedArticleCount: stats[0]?.total ?? 0,
-        cachedUnreadCount: stats[0]?.unread ?? 0,
+        cachedArticleCount: sql`(SELECT count(*) FROM ${articles} WHERE ${articles.feedId} = ${feedId})`,
+        cachedUnreadCount: sql`(SELECT count(*) FROM ${articles} WHERE ${articles.feedId} = ${feedId} AND ${articles.isRead} = 0)`,
       })
       .where(eq(feeds.id, feedId));
   }

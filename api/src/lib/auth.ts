@@ -4,6 +4,8 @@ import { getDb } from "../db";
 import * as schema from "../db/schema";
 
 export function createAuth(d1: D1Database, secret: string, baseURL: string) {
+  const origin = new URL(baseURL).origin;
+
   return betterAuth({
     database: drizzleAdapter(getDb(d1), {
       provider: "sqlite",
@@ -19,8 +21,8 @@ export function createAuth(d1: D1Database, secret: string, baseURL: string) {
       requireEmailVerification: false,
     },
     secret,
-    baseURL,
-    trustedOrigins: ["*"],
+    baseURL: origin,
+    trustedOrigins: [origin],
   });
 }
 

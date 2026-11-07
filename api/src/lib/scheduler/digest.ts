@@ -28,7 +28,11 @@ export async function sendPendingDigests(env: CloudflareEnv): Promise<{
   const currentDay = now.getDay(); // 0-6, 0=Sunday
   const currentTimeStr = `${String(currentHour).padStart(2, "0")}:${String(currentMinute).padStart(2, "0")}`;
 
-  console.log(`[Digest] Checking for pending digests at ${currentTimeStr}, day: ${currentDay}`);
+  console.log(JSON.stringify({
+    event: "digest_scan_started",
+    scheduledTime: currentTimeStr,
+    scheduledDay: currentDay,
+  }));
 
   try {
     // 查找所有启用了邮件摘要的用户
@@ -36,7 +40,10 @@ export async function sendPendingDigests(env: CloudflareEnv): Promise<{
       where: eq(user.emailDigestEnabled, true),
     });
 
-    console.log(`[Digest] Found ${users.length} users with email digest enabled`);
+    console.log(JSON.stringify({
+      event: "digest_candidates_loaded",
+      candidates: users.length,
+    }));
 
     for (const u of users) {
       try {
@@ -49,18 +56,15 @@ export async function sendPendingDigests(env: CloudflareEnv): Promise<{
         const unreadArticles = await getUnreadArticles(db, u.id);
 
         if (unreadArticles.length === 0) {
-          console.log(`[Digest] No unread articles for user ${u.email}`);
           continue;
         }
-
-        console.log(`[Digest] Sending digest to ${u.email} with ${unreadArticles.length} articles`);
 
         // 发送邮件
         const result = await sendDigestEmail(
           u,
           unreadArticles,
           env.RESEND_API_KEY || "",
-          env.FRONTEND_URL || "https://collect.app"
+          env.FRONTEND_URL
         );
 
         if (result.success) {
@@ -76,15 +80,25 @@ export async function sendPendingDigests(env: CloudflareEnv): Promise<{
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : String(err);
         errors.push(`Error processing user ${u.email}: ${errorMessage}`);
-        console.error(`[Digest] Error for user ${u.email}:`, errorMessage);
+        console.error(JSON.stringify({
+          event: "digest_recipient_failed",
+          error: err instanceof Error ? err.name : "UnknownError",
+        }));
       }
     }
 
-    console.log(`[Digest] Completed: sent ${sent} digests, ${errors.length} errors`);
+    console.log(JSON.stringify({
+      event: "digest_scan_completed",
+      sent,
+      failed: errors.length,
+    }));
     return { success: errors.length === 0, sent, errors };
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
-    console.error("[Digest] Fatal error:", errorMessage);
+    console.error(JSON.stringify({
+      event: "digest_scan_failed",
+      error: err instanceof Error ? err.name : "UnknownError",
+    }));
     return { success: false, sent, errors: [...errors, errorMessage] };
   }
 }
@@ -196,7 +210,7 @@ export async function sendTestDigest(
       return mockSendDigestEmail(
         u,
         unreadArticles,
-        env.FRONTEND_URL || "https://collect.app"
+        env.FRONTEND_URL
       );
     }
 
@@ -204,7 +218,7 @@ export async function sendTestDigest(
       u,
       unreadArticles,
       env.RESEND_API_KEY || "",
-      env.FRONTEND_URL || "https://collect.app"
+      env.FRONTEND_URL
     );
 
     return result;

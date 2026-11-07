@@ -10,7 +10,7 @@ import { UserMenu } from "../sidebar/UserMenu";
 import { cn } from "@/lib/utils/cn";
 
 export function Sidebar() {
-	const { folders, feeds, addFolder, isLoading, refresh, fetchFolders, fetchFeeds } = useFeedStore();
+	const { folders, feeds, addFolder, isLoading, refreshError, refresh, fetchFolders, fetchFeeds } = useFeedStore();
 	const { isSidebarCollapsed } = useUiStore();
 	const [showAddFeed, setShowAddFeed] = useState(false);
 	const [showAddFolder, setShowAddFolder] = useState(false);
@@ -67,6 +67,10 @@ export function Sidebar() {
 					</button>
 				</div>
 			</div>
+
+			{refreshError && (
+				<p role="status" className="px-3 pb-2 text-xs text-[var(--text-secondary)]">{refreshError}</p>
+			)}
 
 			{/* 搜索框 */}
 			<SearchBox />

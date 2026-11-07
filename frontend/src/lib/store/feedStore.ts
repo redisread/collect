@@ -1,9 +1,9 @@
 import { create } from "zustand";
 import type { Folder, FeedWithUnreadCount } from "../types";
 
-const API_BASE = typeof import.meta !== 'undefined' && (import.meta as unknown as { env: Record<string, string> }).env?.PUBLIC_API_URL
-  ? (import.meta as unknown as { env: Record<string, string> }).env.PUBLIC_API_URL
-  : "http://localhost:8787";
+import { useArticleStore } from "./articleStore";
+
+const API_BASE = "";
 
 // Re-export SelectedSource from types.ts for convenience
 export type SelectedSource =
@@ -18,6 +18,7 @@ interface FeedStore {
 	feeds: FeedWithUnreadCount[];
 	selectedSource: SelectedSource;
 	isLoading: boolean;
+	refreshError: string | null;
 
 	// Actions
 	setFolders: (folders: Folder[]) => void;
@@ -42,6 +43,7 @@ export const useFeedStore = create<FeedStore>((set, get) => ({
 	feeds: [],
 	selectedSource: { type: "all" },
 	isLoading: false,
+	refreshError: null,
 
 	setFolders: (folders) => set({ folders }),
 	setFeeds: (feeds) => set({ feeds }),
@@ -154,16 +156,58 @@ export const useFeedStore = create<FeedStore>((set, get) => ({
 	},
 
 	refresh: async (feedId) => {
-		set({ isLoading: true });
+		if (get().isLoading) return;
+		set({ isLoading: true, refreshError: null });
+		const controller = new AbortController();
+		const timeout = setTimeout(() => controller.abort(), 65_000);
 		try {
-			await fetch(`${API_BASE}/api/refresh`, {
+			const res = await fetch(`${API_BASE}/api/refresh`, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				credentials: "include",
 				body: JSON.stringify(feedId ? { feedId } : {}),
+				signal: controller.signal,
 			});
-			await get().fetchFeeds();
+			const json = await res.json() as {
+				success: boolean;
+				data: { queued: number; feeds: Pick<FeedWithUnreadCount, "id" | "lastFetchedAt" | "lastErrorAt">[] };
+			};
+			if (!res.ok || !json.success) throw new Error("刷新任务提交失败，请重试");
+			if (json.data.queued === 0) return;
+
+			for (let attempt = 0; attempt < 30; attempt++) {
+				await new Promise((resolve) => setTimeout(resolve, 2000));
+				const status = await fetch(`${API_BASE}/api/feeds`, {
+					credentials: "include",
+					signal: controller.signal,
+				});
+				const result = await status.json() as { success: boolean; data: FeedWithUnreadCount[] };
+				if (!status.ok || !result.success) throw new Error("无法获取刷新进度，请稍后重试");
+				set({ feeds: result.data });
+				const currentFeeds = new Map(result.data.map((feed) => [feed.id, feed]));
+				const failed = json.data.feeds.some((baseline) => {
+					const current = currentFeeds.get(baseline.id);
+					return current?.lastErrorAt && current.lastErrorAt !== baseline.lastErrorAt;
+				});
+				const complete = json.data.feeds.every((baseline) => {
+					const current = currentFeeds.get(baseline.id);
+					return !current || current.lastFetchedAt !== baseline.lastFetchedAt
+						|| Boolean(current.lastErrorAt && current.lastErrorAt !== baseline.lastErrorAt);
+				});
+				if (complete) {
+					const loaded = await useArticleStore.getState().fetchArticles(get().selectedSource);
+					if (!loaded) throw new Error("文章列表加载失败，请稍后重试");
+					if (failed) set({ refreshError: "部分订阅源刷新失败，后台会自动重试" });
+					return;
+				}
+			}
+			set({ refreshError: "刷新仍在后台进行，请稍后再查看" });
+		} catch (error) {
+			set({ refreshError: controller.signal.aborted
+				? "等待刷新超时，任务可能仍在后台进行"
+				: error instanceof Error ? error.message : "刷新失败，请稍后重试" });
 		} finally {
+			clearTimeout(timeout);
 			set({ isLoading: false });
 		}
 	},

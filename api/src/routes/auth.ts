@@ -9,7 +9,7 @@ auth.on(["POST", "GET"], "/*", async (c) => {
   const authInstance = createAuth(
     c.env.DB,
     c.env.BETTER_AUTH_SECRET,
-    c.env.BETTER_AUTH_URL
+    new URL(c.req.url).origin,
   );
   return authInstance.handler(c.req.raw);
 });

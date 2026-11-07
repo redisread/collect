@@ -3,10 +3,9 @@
   "globalDependencies": ["**/.env.*local"],
   "globalEnv": [
     "NODE_ENV",
-    "API_BASE_URL",
     "FRONTEND_URL",
     "BETTER_AUTH_SECRET",
-    "BETTER_AUTH_URL"
+    "RESEND_API_KEY"
   ],
   "tasks": {
     "build": {
@@ -31,7 +30,7 @@
       "outputs": ["openapi.json"]
     },
     "frontend#build": {
-      "dependsOn": ["@collect/shared#build", "^build"],
+      "dependsOn": ["api#build", "@collect/shared#build", "^build"],
       "outputs": ["dist/**"]
     },
     "mobile#generate": {

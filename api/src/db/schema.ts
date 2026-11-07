@@ -32,6 +32,7 @@ export const session = sqliteTable("session", {
 
 export const account = sqliteTable("account", {
 	id: text("id").primaryKey(),
+	issuer: text("issuer").notNull().default("local:credential"),
 	accountId: text("account_id").notNull(),
 	providerId: text("provider_id").notNull(),
 	userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
@@ -44,7 +45,7 @@ export const account = sqliteTable("account", {
 	password: text("password"),
 	createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 	updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
-});
+}, (table) => [uniqueIndex("account_issuer_account_id_unique").on(table.issuer, table.accountId)]);
 
 export const verification = sqliteTable("verification", {
 	id: text("id").primaryKey(),

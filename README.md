@@ -1,13 +1,13 @@
 # Collect
 
-一个现代、极简的 RSS 阅读器，采用 monorepo 架构管理多端应用。
+一个现代、极简的 RSS 阅读器。Web 端采用 Cloudflare-native 单 Worker 架构，移动端复用同一套 API。
 
 ## 项目结构
 
 ```
 collect/
-├── api/                    # 后端 API（Hono + Cloudflare Workers）
-├── frontend/               # Web 前端（Astro 6 + React Islands）
+├── api/                    # Hono API、Auth、Drizzle schema 与业务服务
+├── frontend/               # Astro 7、React Islands 与唯一 Worker 入口
 ├── mobile/                 # 移动端（Flutter）
 ├── packages/
 │   ├── types/              # 共享 TypeScript 类型
@@ -19,10 +19,10 @@ collect/
 
 ### 前置要求
 
-- Node.js >= 20
-- pnpm >= 9（`npm install -g pnpm`）
+- Node.js >= 22.13
+- pnpm >= 11.24（建议使用 Corepack）
 - Flutter >= 3.x（移动端开发）
-- Wrangler CLI（`pnpm add -g wrangler`）
+- Wrangler 使用仓库内锁定版本，无需全局安装
 
 ### 安装依赖
 
@@ -33,35 +33,69 @@ pnpm install
 ### 本地开发
 
 ```bash
-# 启动后端 API（端口 8787）
-pnpm dev:api
-
-# 启动 Web 前端（端口 4321）
+# 启动统一 Worker（Web 页面与 /api/*，端口 4321）
 pnpm dev:frontend
 
 # 启动移动端
 cd mobile && flutter run
 ```
 
-### 部署
+### 验证与部署
 
 ```bash
-# 部署后端
-pnpm deploy:api
+# 类型、测试与构建
+pnpm --filter api lint
+pnpm --filter api test
+pnpm --filter frontend type-check
+pnpm --filter frontend test
+pnpm --filter frontend build
 
-# 部署前端
-pnpm deploy:frontend
+# 仅生成并校验部署包，不发布
+pnpm deploy:dry-run
+
+# 发布统一 Worker（生产操作，需显式确认）
+pnpm deploy
 ```
+
+GitHub [Check and Test 工作流](.github/workflows/cloudflare.yml) 执行类型检查、测试、构建和部署包校验。Cloudflare Workers Builds 监听 `redisread/folio` 的 `main` 分支，合并后自动构建并部署。
+
+Workers Builds 使用根目录 `frontend`、构建命令 `pnpm build`、部署命令 `pnpm exec wrangler deploy`，构建环境设置 `NODE_VERSION=24` 与 `PNPM_VERSION=11.24.0`。合并前等待 GitHub checks 通过。
+
+## Cloudflare 架构
+
+```text
+Cloudflare Worker: collect
+├── /api/*  → Hono + Better Auth + middleware
+├── /*      → Astro SSR/SSG + React Islands + Static Assets
+├── D1      → Drizzle 关系数据
+├── KV      → 应用缓存与 Astro session
+├── R2      → 未来附件、图片与媒体对象
+└── Queues  → Feed 抓取、重试与 DLQ
+```
+
+`frontend/wrangler.jsonc` 是唯一部署配置。当前没有实时协作或单实体强一致协调需求，因此未配置 Durable Objects；Feed 同步是单阶段可重试任务，因此未配置 Workflows。
+
+当前生产状态：
+
+1. 生产域名 `https://collect.jiahongw.com` 由统一 Worker `collect` 提供服务。
+2. `collect-feed-sync`、`collect-feed-sync-dlq` 与 Worker secrets 已配置。
+3. Resend 使用仅限 `gomate.live` 的 Sending access key，发件人为 `Collect <digest@gomate.live>`。
+4. 部署授权由 Cloudflare Workers Builds 管理，运行时密钥保存在 Worker secrets 中。
+5. Flutter 发布时将 `API_BASE_URL` 设置为 `https://collect.jiahongw.com`。
+
+2026-11-07 已补齐 Better Auth `account.issuer` 迁移，验证线上注册、登录、受保护 API 和退出流程，并退役旧前后端 Worker。全新环境需按顺序应用 D1 migrations 后再部署。
+
+具体切换、回滚与资源边界见 [Cloudflare 全栈 ADR](docs/decisions/0001-cloudflare-native-fullstack.md)。
 
 ## 技术栈
 
 | 层 | 技术 |
 |---|---|
-| 后端 | Hono + Cloudflare Workers + D1 + Better Auth |
-| Web 前端 | Astro 6 + React + Tailwind CSS v4 + shadcn/ui |
+| Worker 入口 | Hono + Astro Cloudflare adapter + Static Assets |
+| Web 前端 | Astro 7 + React Islands + Tailwind CSS v4 |
 | 移动端 | Flutter + Riverpod + go_router |
 | 数据库 | Cloudflare D1 (SQLite) + Drizzle ORM |
-| 存储 | Cloudflare KV + R2 |
+| 存储与异步 | Cloudflare KV + R2 + Queues |
 | 认证 | Better Auth |
 
 ## License

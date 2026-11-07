@@ -2,9 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils/cn";
 import type { TranslationHistoryEntry, TranslationHistoryResponse } from "@/lib/types";
 
-const API_BASE = typeof import.meta !== 'undefined' && (import.meta as unknown as { env: Record<string, string> }).env?.PUBLIC_API_URL
-  ? (import.meta as unknown as { env: Record<string, string> }).env.PUBLIC_API_URL
-  : "http://localhost:8787";
+const API_BASE = "";
 
 const LANG_LABELS: Record<string, string> = {
   "zh-CN": "简体中文", "zh-TW": "繁體中文", "en": "English",
