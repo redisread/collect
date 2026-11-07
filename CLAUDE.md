@@ -132,9 +132,10 @@ Before PR handoff, report exactly which checks ran and which were skipped.
 
 ## Engineering Rules
 
+- For PR review and merge decisions, follow [AGENTS.md](AGENTS.md).
 - Keep changes scoped; Web and API share one Worker deployment while mobile remains independent.
 - Do not commit secrets, Wrangler credentials, production tokens, or local `.dev.vars` values.
-- Do not run production D1 migrations or deploys without explicit human approval.
+- Production D1 migrations and direct deployments require user authorization. Automatic deployment triggered by a PR merge follows the authorization in [AGENTS.md](AGENTS.md).
 - Avoid broad refactors while fixing product bugs; prefer small PRs with clear validation.
 - If worktree has unrelated changes, preserve them and mention them in the handoff.
 - When docs conflict with code, inspect `package.json`, Wrangler config, Astro config, and workflows; then update stale docs separately.
