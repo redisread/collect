@@ -86,6 +86,9 @@ async function translateInlineHtml(
   translate: (text: string) => Promise<{ translated: string; detectedLang: string }>,
 ): Promise<{ html: string; text: string; detectedLang: string }> {
   const source = load(html, {}, false);
+  if (!/\p{L}/u.test(source.text())) {
+    return { html: source.html(), text: source.text(), detectedLang: "auto" };
+  }
   if (Array.from(html).length > 1200) {
     return translateContentNodes(source, translate);
   }

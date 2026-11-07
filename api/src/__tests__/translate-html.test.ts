@@ -12,6 +12,14 @@ describe("article translation", () => {
     expect(load(result.translatedHtml)("a").text()).toBe("1");
     expect(load(result.translatedHtml)("p").last().text()).toBe("...");
   });
+
+  it("keeps nested numeric footnotes during long-run and missing-tag fallback", async () => {
+    const translate = vi.fn(async (text: string) => ({
+      translated: text.includes("<em>") ? "Hello world" : text, detectedLang: "en",
+    }));
+    await translateHtml('<p>' + "Hello ".repeat(210) + '<sup><a href="#note">1</a></sup></p><p>Hello <em>world</em><sup>2</sup>.</p>', "zh-CN", translate);
+    expect(translate.mock.calls.every(([text]) => /\p{L}/u.test(load(text).text()))).toBe(true);
+  });
   it("recovers when Google omits emphasis tags instead of failing the whole article", async () => {
     const translate = vi.fn(async (text: string) => ({
       translated: text.includes("<em>") ? "汉明在《科学与工程的艺术》中写道。" : "译" + text,
