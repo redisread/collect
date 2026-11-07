@@ -3,7 +3,7 @@ import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { eq, and, asc, sql } from "drizzle-orm";
 import { getDb } from "../db";
-import { feeds, articles } from "../db/schema";
+import { feeds, articles, folders } from "../db/schema";
 import { authMiddleware } from "../middleware/auth";
 import { RSSFetcher } from "../lib/rss/fetcher";
 import { discoverFeedUrl } from "../lib/rss/parser";
@@ -196,7 +196,17 @@ feedsRoute.put("/:id", async (c) => {
       updatedAt: new Date().toISOString(),
     };
     if (body.title !== undefined) updates.title = body.title.trim();
-    if ("folderId" in body) updates.folderId = body.folderId;
+    if ("folderId" in body) {
+      if (body.folderId !== null && (typeof body.folderId !== "string" || !body.folderId)) {
+        return c.json({ success: false, error: "无效的文件夹" }, 400);
+      }
+      if (body.folderId) {
+        const [folder] = await db.select({ id: folders.id }).from(folders)
+          .where(and(eq(folders.id, body.folderId), eq(folders.userId, userId)));
+        if (!folder) return c.json({ success: false, error: "目标文件夹不存在" }, 404);
+      }
+      updates.folderId = body.folderId;
+    }
     if (body.sortOrder !== undefined) updates.sortOrder = body.sortOrder;
 
     const [updated] = await db

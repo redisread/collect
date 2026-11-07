@@ -19,6 +19,8 @@ interface FeedStore {
 	selectedSource: SelectedSource;
 	isLoading: boolean;
 	refreshError: string | null;
+	movingFeedId: string | null;
+	moveStatus: string | null;
 
 	// Actions
 	setFolders: (folders: Folder[]) => void;
@@ -44,6 +46,8 @@ export const useFeedStore = create<FeedStore>((set, get) => ({
 	selectedSource: { type: "all" },
 	isLoading: false,
 	refreshError: null,
+	movingFeedId: null,
+	moveStatus: null,
 
 	setFolders: (folders) => set({ folders }),
 	setFeeds: (feeds) => set({ feeds }),
@@ -105,18 +109,26 @@ export const useFeedStore = create<FeedStore>((set, get) => ({
 	},
 
 	moveFeedToFolder: async (feedId, folderId) => {
-		const res = await fetch(`${API_BASE}/api/feeds/${feedId}`, {
-			method: "PUT",
-			headers: { "Content-Type": "application/json" },
-			credentials: "include",
-			body: JSON.stringify({ folderId }),
-		});
-		const json = await res.json() as { success: boolean; data: FeedWithUnreadCount };
-		if (json.success) {
-			set((state) => ({
-				feeds: state.feeds.map((f) => (f.id === feedId ? { ...f, folderId } : f)),
-			}));
-		}
+		const feed = get().feeds.find(item => item.id === feedId);
+		if (!feed || get().movingFeedId || (feed.folderId ?? null) === folderId) return;
+		if (folderId && !get().folders.some(folder => folder.id === folderId)) return;
+		const previousFolder = feed.folderId ?? null;
+		set(state => ({ movingFeedId: feedId, moveStatus: "正在移动…", feeds: state.feeds.map(item => item.id === feedId ? { ...item, folderId } : item) }));
+		try {
+			const res = await fetch(`${API_BASE}/api/feeds/${feedId}`, {
+				method: "PUT",
+				headers: { "Content-Type": "application/json" },
+				credentials: "include",
+				body: JSON.stringify({ folderId }),
+				signal: AbortSignal.timeout(15_000),
+			});
+			const json = await res.json() as { success: boolean; data: FeedWithUnreadCount };
+			if (!res.ok || !json.success) throw new Error("移动失败");
+			set({ moveStatus: `已移至${get().folders.find(folder => folder.id === folderId)?.name ?? "未分类"}` });
+			if (get().selectedSource.type === "folder") await useArticleStore.getState().fetchArticles(get().selectedSource);
+		} catch {
+			set(state => ({ moveStatus: "移动失败，已恢复原位置，请重试", feeds: state.feeds.map(item => item.id === feedId ? { ...item, folderId: previousFolder } : item) }));
+		} finally { set({ movingFeedId: null }); }
 	},
 
 	addFolder: async (name, color) => {
