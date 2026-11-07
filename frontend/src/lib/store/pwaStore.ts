@@ -7,14 +7,25 @@ interface InstallPrompt extends Event {
 interface PwaState {
   installPrompt: InstallPrompt | null;
   iosInstallAvailable: boolean;
-  waitingWorker: ServiceWorker | null;
+  updateWorker: ServiceWorker | null;
   updating: boolean;
 }
 export const usePwaStore = create<PwaState>(() => ({
-  installPrompt: null, iosInstallAvailable: false, waitingWorker: null, updating: false,
+  installPrompt: null, iosInstallAvailable: false, updateWorker: null, updating: false,
 }));
 
 let initialized = false;
+export function applyPwaUpdate() {
+  const worker = usePwaStore.getState().updateWorker;
+  if (!worker) return;
+  if (worker.state !== "installed") {
+    window.location.reload();
+    return;
+  }
+  usePwaStore.setState({ updating: true });
+  worker.postMessage({ type: "SKIP_WAITING" });
+}
+
 export async function initializePwa() {
   if (initialized || !("serviceWorker" in navigator)) return;
   initialized = true;
@@ -30,17 +41,20 @@ export async function initializePwa() {
   window.addEventListener("appinstalled", () => {
     usePwaStore.setState({ installPrompt: null, iosInstallAvailable: false });
   });
+  let hadController = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     if (usePwaStore.getState().updating) window.location.reload();
+    else if (hadController) usePwaStore.setState({ updateWorker: navigator.serviceWorker.controller });
+    hadController = true;
   });
   try {
     const registration = await navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" });
-    if (registration.waiting) usePwaStore.setState({ waitingWorker: registration.waiting });
+    if (registration.waiting) usePwaStore.setState({ updateWorker: registration.waiting });
     registration.addEventListener("updatefound", () => {
       const worker = registration.installing;
       worker?.addEventListener("statechange", () => {
         if (worker.state === "installed" && navigator.serviceWorker.controller) {
-          usePwaStore.setState({ waitingWorker: worker });
+          usePwaStore.setState({ updateWorker: worker });
         }
       });
     });
