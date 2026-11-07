@@ -61,7 +61,7 @@ interface ArticleStore {
 	annotations: Annotation[];
 
 	// 方法
-	fetchArticles: (source: SelectedSource, reset?: boolean) => Promise<void>;
+	fetchArticles: (source: SelectedSource, reset?: boolean) => Promise<boolean>;
 	fetchMoreArticles: (source: SelectedSource) => Promise<void>;
 	selectArticle: (articleId: string | null) => Promise<void>;
 	markRead: (articleId: string, isRead: boolean) => Promise<void>;
@@ -139,7 +139,8 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 				success: boolean;
 				data: { articles: ArticleListItem[]; total: number; page: number; pageSize: number };
 			};
-			if (requestId === articleListRequestId && json.success) {
+			if (!res.ok || !json.success) return false;
+			if (requestId === articleListRequestId) {
 				set({
 					articles: json.data.articles,
 					total: json.data.total,
@@ -149,6 +150,9 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 					selectedArticle: null,
 				});
 			}
+			return true;
+		} catch {
+			return false;
 		} finally {
 			if (requestId === articleListRequestId) set({ isLoading: false });
 		}

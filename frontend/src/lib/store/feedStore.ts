@@ -195,7 +195,8 @@ export const useFeedStore = create<FeedStore>((set, get) => ({
 						|| Boolean(current.lastErrorAt && current.lastErrorAt !== baseline.lastErrorAt);
 				});
 				if (complete) {
-					await useArticleStore.getState().fetchArticles(get().selectedSource);
+					const loaded = await useArticleStore.getState().fetchArticles(get().selectedSource);
+					if (!loaded) throw new Error("文章列表加载失败，请稍后重试");
 					if (failed) set({ refreshError: "部分订阅源刷新失败，后台会自动重试" });
 					return;
 				}

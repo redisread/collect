@@ -22,7 +22,7 @@ describe("queued feed refresh", () => {
       .mockResolvedValueOnce(response([baseline]))
       .mockResolvedValueOnce(response([{ ...baseline, lastFetchedAt: "2026-11-07T10:00:00Z" }]));
     vi.stubGlobal("fetch", fetchMock);
-    const articles = vi.spyOn(useArticleStore.getState(), "fetchArticles").mockResolvedValue();
+    const articles = vi.spyOn(useArticleStore.getState(), "fetchArticles").mockResolvedValue(true);
     const pending = useFeedStore.getState().refresh();
     await vi.advanceTimersByTimeAsync(2000);
     expect(useFeedStore.getState().isLoading).toBe(true);
@@ -54,7 +54,7 @@ describe("queued feed refresh", () => {
   });
 
   it("reports a feed failure and stops polling", async () => {
-    vi.spyOn(useArticleStore.getState(), "fetchArticles").mockResolvedValue();
+    vi.spyOn(useArticleStore.getState(), "fetchArticles").mockResolvedValue(true);
     vi.stubGlobal("fetch", vi.fn()
       .mockResolvedValueOnce(response({ queued: 1, feeds: [baseline] }, 202))
       .mockResolvedValueOnce(response([{ ...baseline, lastErrorAt: "2026-11-07T10:00:00Z" }])));
@@ -71,7 +71,7 @@ describe("queued feed refresh", () => {
       .mockResolvedValueOnce(response({ queued: 2, feeds: [baseline, second] }, 202))
       .mockResolvedValueOnce(response([failed, second]))
       .mockResolvedValueOnce(response([failed, { ...second, lastFetchedAt: "2026-11-07T10:00:01Z" }])));
-    const articles = vi.spyOn(useArticleStore.getState(), "fetchArticles").mockResolvedValue();
+    const articles = vi.spyOn(useArticleStore.getState(), "fetchArticles").mockResolvedValue(true);
     const pending = useFeedStore.getState().refresh();
     await vi.advanceTimersByTimeAsync(2000);
     expect(useFeedStore.getState().isLoading).toBe(true);
@@ -80,6 +80,24 @@ describe("queued feed refresh", () => {
     await pending;
     expect(articles).toHaveBeenCalledOnce();
     expect(useFeedStore.getState().refreshError).toContain("失败");
+  });
+
+  it.each([401, 500])("reports article loading failure after queue completion (%s)", async (status) => {
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(response({ queued: 1, feeds: [baseline] }, 202))
+      .mockResolvedValueOnce(response([{ ...baseline, lastFetchedAt: "2026-11-07T10:00:00Z" }]))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ success: false }), { status })));
+    const pending = useFeedStore.getState().refresh();
+    await vi.advanceTimersByTimeAsync(2000);
+    await pending;
+    expect(useFeedStore.getState().refreshError).toContain("文章列表加载失败");
+    expect(useFeedStore.getState().isLoading).toBe(false);
+  });
+
+  it("returns a failure result when article loading rejects", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("Network failure")));
+    await expect(useArticleStore.getState().fetchArticles({ type: "all" })).resolves.toBe(false);
+    expect(useArticleStore.getState().isLoading).toBe(false);
   });
 
   it("shows submission errors without starting polling", async () => {
