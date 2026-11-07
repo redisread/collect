@@ -1,10 +1,36 @@
 import { Hono } from "hono";
 import { authMiddleware } from "../middleware/auth";
 import type { CloudflareEnv } from "../types";
+import { z } from "zod";
+import { and, eq } from "drizzle-orm";
+import { getDb } from "../db";
+import { articles, feeds, translationHistory } from "../db/schema";
+import { SUPPORTED_LANG_CODES } from "../config/languages";
 
 const translationsRoute = new Hono<{ Bindings: CloudflareEnv; Variables: { userId: string } }>();
 
 translationsRoute.use("/*", authMiddleware);
+
+// Record metadata for a successful browser-side translation through the authenticated API.
+translationsRoute.post("/history", async c => {
+  const parsed = z.object({
+    articleId: z.string().min(1).max(200),
+    targetLang: z.string().refine(value => SUPPORTED_LANG_CODES.has(value)),
+    sourceLang: z.string().min(1).max(20).default("auto"),
+  }).safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ success: false, error: "无效的翻译记录" }, 400);
+  const userId = c.get("userId");
+  const db = getDb(c.env.DB);
+  const article = await db.select({ title: articles.title, feedName: feeds.title })
+    .from(articles).innerJoin(feeds, eq(articles.feedId, feeds.id))
+    .where(and(eq(articles.id, parsed.data.articleId), eq(articles.userId, userId))).get();
+  if (!article) return c.json({ success: false, error: "文章不存在" }, 404);
+  await db.insert(translationHistory).values({
+    id: crypto.randomUUID(), userId, ...parsed.data,
+    articleTitle: article.title, feedName: article.feedName,
+  });
+  return c.json({ success: true }, 201);
+});
 
 // GET /api/translations/history — 获取翻译历史记录
 translationsRoute.get("/history", async (c) => {

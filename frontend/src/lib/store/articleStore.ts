@@ -40,6 +40,8 @@ interface ArticleStore {
 	isLoadingDetail: boolean;
 	detailError: string | null;
 	translationError: string | null;
+	translationFallback: { articleId: string; content: string; targetLang: string } | null;
+	translationMode: "server" | "browser";
 	extractionError: string | null;
 	total: number;
 	page: number;
@@ -75,6 +77,7 @@ interface ArticleStore {
 	navigateArticle: (direction: "next" | "prev") => Promise<void>;
 	translateArticle: (articleId: string, content: string, targetLang?: string) => Promise<boolean>;
 	translateFullArticle: () => Promise<boolean>;
+	translateInBrowser: () => Promise<boolean>;
 	clearTranslation: (articleId: string) => void;
 	setTargetLanguage: (lang: string) => void;
 	extractArticle: (articleId: string) => Promise<Article | null>;
@@ -95,6 +98,7 @@ let articleListRequestId = 0;
 let detailRequestId = 0;
 let translationRequestId = 0;
 let extractionRequestId = 0;
+let browserTranslationController: AbortController | null = null;
 
 function buildArticleUrl(source: SelectedSource, page: number, sortOrder: string): string {
 	const params = new URLSearchParams({
@@ -119,6 +123,8 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 	isLoadingDetail: false,
 	detailError: null,
 	translationError: null,
+	translationFallback: null,
+	translationMode: "server",
 	extractionError: null,
 	isExtracting: false,
 	total: 0,
@@ -195,11 +201,12 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 	},
 
 	selectArticle: async (articleId) => {
+		browserTranslationController?.abort();
 		const requestId = ++detailRequestId;
 		++translationRequestId;
 		++extractionRequestId;
 		set({ selectedArticleId: articleId, selectedArticle: null, isLoadingDetail: !!articleId,
-			detailError: null, translationError: null, extractionError: null,
+			detailError: null, translationError: null, translationFallback: null, extractionError: null,
 			isTranslating: false, isExtracting: false, annotations: [] });
 		if (!articleId) return;
 		try {
@@ -311,14 +318,18 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 			return true;
 		}
 		const requestId = ++translationRequestId;
-		set({ isTranslating: true, translationError: null });
+		set({ isTranslating: true, translationError: null, translationFallback: null, translationMode: "server" });
 		try {
 			const res = await fetch(`${API_BASE}/api/translate`, {
 				method: "POST", headers: { "Content-Type": "application/json" },
 				credentials: "include", signal: AbortSignal.timeout(65_000),
 				body: JSON.stringify({ articleId, content, targetLang: lang }),
 			});
-			const json = await res.json() as { success: boolean; data: TranslationResult; error?: string };
+			const json = await res.json() as { success: boolean; data: TranslationResult; error?: string; code?: string };
+			if (requestId === translationRequestId && get().selectedArticleId === articleId &&
+				["google_rate_limited", "google_http_error", "translation_timeout"].includes(json.code || "")) {
+				set({ translationFallback: { articleId, content, targetLang: lang } });
+			}
 			if (!res.ok || !json.success) throw new Error(json.error || "翻译失败，请重试");
 			if (requestId !== translationRequestId || get().selectedArticleId !== articleId) return false;
 			set(state => ({ extractionError: null, translations: { ...state.translations, [key]: {
@@ -334,6 +345,46 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 		}
 	},
 
+	translateInBrowser: async () => {
+		const pending = get().translationFallback;
+		if (!pending || get().isTranslating || get().selectedArticleId !== pending.articleId) return false;
+		const requestId = ++translationRequestId;
+		const controller = new AbortController();
+		browserTranslationController?.abort();
+		browserTranslationController = controller;
+		const timer = setTimeout(() => controller.abort(), 120_000);
+		set({ isTranslating: true, translationError: null, translationMode: "browser" });
+		try {
+			const { translateInBrowser } = await import("../translate-browser");
+			const result = await translateInBrowser(pending.content, pending.targetLang, controller.signal);
+			if (requestId !== translationRequestId || get().selectedArticleId !== pending.articleId) return false;
+			set(state => ({
+				translationFallback: null, extractionError: null,
+				translations: { ...state.translations, [`${pending.articleId}:${pending.targetLang}`]: {
+					...result, original: pending.content,
+					translated: result.segments.map(segment => segment.translated).join("\n\n"),
+				} },
+			}));
+			void fetch("/api/translations/history", {
+				method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
+				signal: AbortSignal.timeout(5000),
+				body: JSON.stringify({ articleId: pending.articleId, targetLang: pending.targetLang, sourceLang: result.detectedLang }),
+			}).then(response => {
+				if (!response.ok) throw new Error("history");
+			}).catch(() => console.warn("translation_history_write_failed"));
+			return true;
+		} catch {
+			if (requestId === translationRequestId) set({
+				translationError: controller.signal.aborted ? "浏览器翻译超时，请重试" : "浏览器暂时无法连接 Google 翻译，请检查网络后重试",
+			});
+			return false;
+		} finally {
+			clearTimeout(timer);
+			controller.abort();
+			if (requestId === translationRequestId) set({ isTranslating: false });
+		}
+	},
+
 	clearTranslation: (articleId) => {
 		set(state => ({ translations: Object.fromEntries(
 			Object.entries(state.translations).filter(([key]) => !key.startsWith(articleId + ":"))
@@ -341,8 +392,9 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 	},
 
 	setTargetLanguage: (lang) => {
+		browserTranslationController?.abort();
 		++translationRequestId;
-		set({ targetLanguage: lang, translationError: null, isTranslating: false });
+		set({ targetLanguage: lang, translationError: null, translationFallback: null, isTranslating: false });
 	},
 
 	toggleRead: async (articleId) => {

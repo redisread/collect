@@ -12,6 +12,7 @@ export function ArticleToolbar({ article, onOpenNotes }: ArticleToolbarProps) {
   const {
     toggleStarred, toggleReadLater, translateArticle, translateFullArticle, isTranslating,
     extractArticle, isExtracting, extractionError, translationError,
+    translationFallback, translateInBrowser, translationMode,
     targetLanguage, setTargetLanguage,
   } = useArticleStore();
   const menuId = useId();
@@ -86,10 +87,13 @@ export function ArticleToolbar({ article, onOpenNotes }: ArticleToolbarProps) {
           className={buttonClass + " flex items-center"} onClick={closeMenu}>打开原文 ↗</a>
       </div>
       {busy && <p role="status" className="mt-2 text-xs text-[var(--text-secondary)]">
-        {isExtracting ? "正在获取完整文章…" : "正在翻译，请稍候…"}
+        {isExtracting ? "正在获取完整文章…" : translationMode === "browser" ? "正在通过浏览器连接 Google 翻译…" : "正在翻译，请稍候…"}
       </p>}
       {(translationError || extractionError) && <div role="alert" className="mt-2 text-sm text-[var(--text-secondary)]">
         <p>{translationError || extractionError}</p>
+        {translationFallback && <button disabled={busy}
+          className={buttonClass + " mt-2 bg-[var(--accent-light)] text-[var(--accent)]"}
+          onClick={() => void translateInBrowser()}>通过浏览器重试</button>}
         {extractionError && article.summary && !article.content && <button
           disabled={busy} className={buttonClass + " mt-1 underline underline-offset-4"}
           onClick={() => void translateArticle(article.id, "<p>" + escapeHtml(article.summary!) + "</p>", targetLanguage)}>
