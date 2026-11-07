@@ -92,7 +92,7 @@ Unified Worker:
 CI:
 
 - PRs and pushes to `main` run `.github/workflows/cloudflare.yml`
-- Only pushes to `main` deploy, after API/Web checks, tests, build and Wrangler dry-run pass
+- GitHub Actions runs checks, tests, build validation and Wrangler dry-run. Cloudflare Workers Builds deploys pushes to `main` from `redisread/folio` using root `frontend`, build `pnpm build` and deploy `pnpm exec wrangler deploy`.
 - `mobile/**` changes trigger `.github/workflows/mobile.yml`
 
 ## API Rules

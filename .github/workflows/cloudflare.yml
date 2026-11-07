@@ -1,4 +1,4 @@
-name: Cloudflare Full-stack
+name: Check and Test
 
 on:
   pull_request:
@@ -43,30 +43,3 @@ jobs:
         run: pnpm --filter frontend build
       - name: Validate Wrangler deployment bundle
         run: pnpm --filter frontend exec wrangler deploy --dry-run
-
-  deploy:
-    name: Deploy unified Worker
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: verify
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    environment: production
-    steps:
-      - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.24.0
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Build unified Worker
-        run: pnpm --filter frontend build
-      - name: Deploy with Wrangler
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: frontend
-          command: deploy
