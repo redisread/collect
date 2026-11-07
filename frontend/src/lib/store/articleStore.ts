@@ -373,9 +373,12 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 				if (!response.ok) throw new Error("history");
 			}).catch(() => console.warn("translation_history_write_failed"));
 			return true;
-		} catch {
+		} catch (error) {
 			if (requestId === translationRequestId) set({
-				translationError: controller.signal.aborted ? "浏览器翻译超时，请重试" : "浏览器暂时无法连接 Google 翻译，请检查网络后重试",
+				translationError: controller.signal.aborted || (error instanceof Error && error.name === "TimeoutError")
+					? "Google 翻译响应超时，请重试；已完成的段落会继续复用"
+					: error instanceof Error && error.name === "TranslationError"
+						? error.message : "浏览器暂时无法连接 Google 翻译，请检查网络后重试",
 			});
 			return false;
 		} finally {
