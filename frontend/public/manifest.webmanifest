@@ -1,0 +1,16 @@
+{
+  "id": "/",
+  "name": "Collect 阅读器",
+  "short_name": "Collect",
+  "description": "整理订阅，专注阅读。",
+  "lang": "zh-CN",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#F3CD54",
+  "icons": [
+    { "src": "/icons/collect-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/collect-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

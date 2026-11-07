@@ -7,6 +7,7 @@ import { FolderTree } from "../sidebar/FolderTree";
 import { AddFeedDialog } from "../sidebar/AddFeedDialog";
 import { ThemeToggle } from "../common/ThemeToggle";
 import { UserMenu } from "../sidebar/UserMenu";
+import { PwaInstallButton } from "../PwaControls";
 import { cn } from "@/lib/utils/cn";
 
 export function Sidebar() {
@@ -140,6 +141,7 @@ export function Sidebar() {
 			</a>
 
 			{/* 底部工具栏 */}
+			<PwaInstallButton />
 			<div className="shrink-0 px-3 py-3 border-t border-[var(--border-light)] flex items-center justify-between">
 				<ThemeToggle />
 				<span className="text-[11px] text-[var(--text-tertiary)]">

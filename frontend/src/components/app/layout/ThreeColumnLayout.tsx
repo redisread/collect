@@ -84,7 +84,7 @@ export function ThreeColumnLayout() {
 		<div
 			ref={containerRef}
 			className={cn(
-				"flex h-dvh w-full flex-col lg:flex-row overflow-hidden bg-[var(--bg-main)]",
+				"flex h-dvh w-full flex-col lg:flex-row overflow-hidden bg-[var(--bg-main)] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]",
 				(isDraggingSidebar || isDraggingList) && "select-none cursor-col-resize"
 			)}
 		>
