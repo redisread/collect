@@ -9,10 +9,10 @@ export async function translateInBrowser(content: string, targetLang: string, si
     const key = JSON.stringify([targetLang, text]);
     const cached = successfulSegments.get(key);
     if (cached) return cached;
-    const translated = await googleTranslate(text, targetLang, "auto", signal);
+    const translated = await googleTranslate(text, targetLang, "auto", signal, 30_000);
     if (successfulSegments.size >= 500) successfulSegments.delete(successfulSegments.keys().next().value!);
     successfulSegments.set(key, translated);
     return translated;
-  });
+  }, 2);
   return { ...result, targetLang, timestamp: Date.now() };
 }

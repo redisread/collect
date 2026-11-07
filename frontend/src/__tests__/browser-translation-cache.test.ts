@@ -1,7 +1,24 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { translateInBrowser } from "../lib/translate-browser";
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+it("uses two concurrent requests and a thirty-second request timeout in the browser", async () => {
+  const timeout = vi.spyOn(AbortSignal, "timeout").mockImplementation(() => new AbortController().signal);
+  const finish: (() => void)[] = [];
+  const fetchMock = vi.fn().mockImplementation((url: URL) => new Promise(resolve => {
+    finish.push(() => resolve(Response.json([[["译" + url.searchParams.get("q")]], null, "en"])));
+  }));
+  vi.stubGlobal("fetch", fetchMock);
+  const pending = translateInBrowser("<p>Concurrency first</p><p>Concurrency second</p><p>Concurrency third</p>", "zh-CN", new AbortController().signal);
+  await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+  expect(timeout).toHaveBeenCalledWith(30_000);
+  finish[0]();
+  await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+  finish[1]();
+  finish[2]();
+  expect((await pending).segments).toHaveLength(3);
+});
 it("reuses successful segments when a browser retry follows an upstream failure", async () => {
   const fetchMock = vi.fn().mockImplementation((url: URL) => {
     const text = url.searchParams.get("q");

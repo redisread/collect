@@ -22,7 +22,7 @@ export function splitTranslationText(text: string, size = 1200): string[] {
   return chunks;
 }
 
-export async function googleTranslate(text: string, target: string, source: string, signal: AbortSignal) {
+export async function googleTranslate(text: string, target: string, source: string, signal: AbortSignal, timeoutMs = 10_000) {
   const parts: string[] = [];
   let detectedLang = source;
   for (const chunk of splitTranslationText(text)) {
@@ -30,7 +30,7 @@ export async function googleTranslate(text: string, target: string, source: stri
     url.search = new URLSearchParams({ client: "gtx", sl: source, tl: target, dt: "t", q: chunk }).toString();
     let translated = "";
     for (let attempt = 0; attempt < 2; attempt++) {
-      const response = await fetch(url, { signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]) });
+      const response = await fetch(url, { signal: AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) });
       if (!response.ok) {
         await response.body?.cancel();
         if (attempt === 0 && (response.status === 429 || response.status >= 500)) {
@@ -62,7 +62,7 @@ async function translateContentNodes(
 ): Promise<{ html: string; text: string; detectedLang: string }> {
   let detectedLang = "auto";
   for (const node of source.root().contents().toArray()) {
-    if (node.type === "text" && node.data.trim()) {
+    if (node.type === "text" && /\p{L}/u.test(node.data)) {
       const result = await translate(node.data.trim());
       const leading = node.data.match(/^\s*/)?.[0] ?? "";
       const trailing = node.data.match(/\s*$/)?.[0] ?? "";
@@ -86,6 +86,9 @@ async function translateInlineHtml(
   translate: (text: string) => Promise<{ translated: string; detectedLang: string }>,
 ): Promise<{ html: string; text: string; detectedLang: string }> {
   const source = load(html, {}, false);
+  if (!/\p{L}/u.test(source.text())) {
+    return { html: source.html(), text: source.text(), detectedLang: "auto" };
+  }
   if (Array.from(html).length > 1200) {
     return translateContentNodes(source, translate);
   }
@@ -108,6 +111,7 @@ export async function translateHtml(
   html: string,
   target: string,
   translate: (text: string) => Promise<{ translated: string; detectedLang: string }>,
+  concurrency: 1 | 2 | 4 = 4,
 ) {
   const original = load(html, {}, false);
   original("script,style,iframe,object,embed,form").remove();
@@ -121,7 +125,7 @@ export async function translateHtml(
     function flush() {
       if (!run.length) return;
       const source = run.map(node => original.html(node)).join("");
-      if (run.some(node => original(node).text().trim())) {
+      if (run.some(node => /\p{L}/u.test(original(node).text()))) {
         const token = "<!--" + marker + "-" + jobs.length + "-->";
         jobs.push(source);
         output.translated += token;
@@ -157,7 +161,7 @@ export async function translateHtml(
   if (jobs.length > 600) throw new TranslationError("too_many_segments", "文章段落过多，暂时无法全文翻译");
   const results: { html: string; text: string; detectedLang: string }[] = new Array(jobs.length);
   let index = 0;
-  await Promise.all(Array.from({ length: Math.min(4, jobs.length) }, async () => {
+  await Promise.all(Array.from({ length: Math.min(concurrency, jobs.length) }, async () => {
     while (index < jobs.length) {
       const i = index++;
       results[i] = await translateInlineHtml(jobs[i], translate);
