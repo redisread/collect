@@ -24,7 +24,7 @@ describe("POST /api/refresh", () => {
     const mockDb = {
       select: vi.fn(() => mockDb),
       from: vi.fn(() => mockDb),
-      where: vi.fn().mockResolvedValue([{ id: "feed-1" }]),
+      where: vi.fn().mockResolvedValue([{ id: "feed-1", lastFetchedAt: null, lastErrorAt: null }]),
     };
     const sendBatch = vi.fn().mockResolvedValue({
       metadata: { metrics: { backlogCount: 1, backlogBytes: 50 } },
@@ -65,7 +65,7 @@ describe("POST /api/refresh", () => {
     expect(response.status).toBe(202);
     await expect(response.json()).resolves.toEqual({
       success: true,
-      data: { queued: 1 },
+      data: { queued: 1, feeds: [{ id: "feed-1", lastFetchedAt: null, lastErrorAt: null }] },
     });
     expect(sendBatch).toHaveBeenCalledOnce();
   });

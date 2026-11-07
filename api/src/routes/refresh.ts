@@ -20,18 +20,18 @@ refreshRoute.post("/", async (c) => {
     const body = await c.req.json().catch(() => ({})) as { feedId?: string };
     const db = getDb(c.env.DB);
 
-    let feedList: Array<{ id: string }>;
+    let feedList: Array<{ id: string; lastFetchedAt: string | null; lastErrorAt: string | null }>;
     if (body.feedId) {
       // 刷新单个订阅源（验证归属）
       feedList = await db
-        .select({ id: feeds.id })
+        .select({ id: feeds.id, lastFetchedAt: feeds.lastFetchedAt, lastErrorAt: feeds.lastErrorAt })
         .from(feeds)
         .where(and(eq(feeds.id, body.feedId), eq(feeds.userId, userId)));
       if (feedList.length === 0) return c.json({ success: false, error: "订阅源不存在" }, 404);
     } else {
       // 刷新当前用户所有订阅源
       feedList = await db
-        .select({ id: feeds.id })
+        .select({ id: feeds.id, lastFetchedAt: feeds.lastFetchedAt, lastErrorAt: feeds.lastErrorAt })
         .from(feeds)
         .where(eq(feeds.userId, userId))
         .orderBy(asc(feeds.sortOrder));
@@ -45,7 +45,7 @@ refreshRoute.post("/", async (c) => {
       "manual",
     );
 
-    return c.json({ success: true, data: { queued } }, 202);
+    return c.json({ success: true, data: { queued, feeds: feedList } }, 202);
   } catch {
     return c.json({ success: false, error: "刷新任务提交失败" }, 500);
   }

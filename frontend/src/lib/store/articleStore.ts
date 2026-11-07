@@ -87,6 +87,7 @@ interface ArticleStore {
 }
 
 const PAGE_SIZE = 30;
+let articleListRequestId = 0;
 
 function buildArticleUrl(source: SelectedSource, page: number, sortOrder: string): string {
 	const params = new URLSearchParams({
@@ -129,15 +130,16 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 	annotations: [],
 
 	fetchArticles: async (source, reset = true) => {
+		const requestId = ++articleListRequestId;
 		set({ isLoading: true });
 		try {
 			const url = buildArticleUrl(source, 1, get().sortOrder);
-			const res = await fetch(url, { credentials: "include" });
+			const res = await fetch(url, { credentials: "include", signal: AbortSignal.timeout(15_000) });
 			const json = await res.json() as {
 				success: boolean;
 				data: { articles: ArticleListItem[]; total: number; page: number; pageSize: number };
 			};
-			if (json.success) {
+			if (requestId === articleListRequestId && json.success) {
 				set({
 					articles: json.data.articles,
 					total: json.data.total,
@@ -148,7 +150,7 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 				});
 			}
 		} finally {
-			set({ isLoading: false });
+			if (requestId === articleListRequestId) set({ isLoading: false });
 		}
 	},
 
@@ -156,6 +158,7 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 		const { page, articles, total, isLoading } = get();
 		if (isLoading || articles.length >= total) return;
 
+		const requestId = ++articleListRequestId;
 		set({ isLoading: true });
 		try {
 			const nextPage = page + 1;
@@ -165,7 +168,7 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 				success: boolean;
 				data: { articles: ArticleListItem[]; total: number };
 			};
-			if (json.success) {
+			if (requestId === articleListRequestId && json.success) {
 				set((state) => ({
 					articles: [...state.articles, ...json.data.articles],
 					page: nextPage,
@@ -173,7 +176,7 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 				}));
 			}
 		} finally {
-			set({ isLoading: false });
+			if (requestId === articleListRequestId) set({ isLoading: false });
 		}
 	},
 
