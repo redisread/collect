@@ -35,6 +35,27 @@ describe("article translation", () => {
     expect(chunks.every(chunk => Array.from(chunk).length <= 1200)).toBe(true);
   });
 
+  it("keeps inline media once and excludes it from translation requests", async () => {
+    const translate = vi.fn(async (text: string) => ({ translated: text, detectedLang: "en" }));
+    const result = await translateHtml('<p>Hello <img src="https://example.com/a.jpg"> world</p>', "zh-CN", translate);
+    expect(load(result.bilingualHtml)("img")).toHaveLength(1);
+    expect(load(result.translatedHtml)("img")).toHaveLength(1);
+    expect(translate.mock.calls.every(([text]) => !text.includes("<img"))).toBe(true);
+  });
+
+  it("never cuts HTML tags when a long paragraph crosses the Google chunk boundary", async () => {
+    const source = "Hello world. ".repeat(100).slice(0, 1196) + '<a href="https://example.com/long-link">Read more here</a> and finish.';
+    const translate = vi.fn(async (text: string) => {
+      // Simulate the upstream behavior on each transport chunk, including tag corruption.
+      const chunks = splitTranslationText(text);
+      if (chunks.some(chunk => /<[^>]*$/.test(chunk))) throw new Error("cut tag");
+      return { translated: text, detectedLang: "en" };
+    });
+    const result = await translateHtml("<p>" + source + "</p>", "zh-CN", translate);
+    expect(load(result.translatedHtml)("a").attr("href")).toBe("https://example.com/long-link");
+    expect(load(result.translatedHtml)("p").text()).toBe(load("<p>" + source + "</p>")("p").text());
+  });
+
   it("rejects upstream failures and empty translations", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("denied", { status: 403 })));
     await expect(googleTranslate("Hi", "zh-CN", "auto", new AbortController().signal)).rejects.toThrow();

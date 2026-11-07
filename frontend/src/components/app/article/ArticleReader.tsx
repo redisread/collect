@@ -184,6 +184,9 @@ export function ArticleReader() {
 		if (!articleContentRef.current?.contains(range.commonAncestorContainer)) {
 			return;
 		}
+		if (range.startContainer.parentElement?.closest(".translation-text") ||
+			range.endContainer.parentElement?.closest(".translation-text") ||
+			range.cloneContents().querySelector(".translation-text")) return;
 
 		setHighlightToolbar({
 			visible: true,
@@ -459,7 +462,7 @@ export function ArticleReader() {
 								{hasTranslation && viewMode !== "original" && (
 									<>
 										{!hasContent && <p className="mb-4 text-sm text-[var(--text-secondary)]">以下为摘要翻译</p>}
-										<div className="article-content" lang={viewMode === "translated" ? targetLanguage : undefined} dir="auto"
+										<div ref={viewMode === "both" ? articleContentRef : undefined} className="article-content" lang={viewMode === "translated" ? targetLanguage : undefined} dir="auto"
 											dangerouslySetInnerHTML={{ __html: sanitizeHtml(
 												(viewMode === "both" ? translation.bilingualHtml : translation.translatedHtml) || ""
 											) }} />

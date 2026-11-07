@@ -2,6 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
 import translateRoute from "../routes/translate";
 import type { CloudflareEnv } from "../types";
+import { getDb } from "../db";
+
+vi.mock("../db", () => ({ getDb: vi.fn() }));
 
 vi.mock("../middleware/auth", () => ({
   authMiddleware: async (c: { set: (key: string, value: string) => void }, next: () => Promise<void>) => {
@@ -28,6 +31,10 @@ describe("translation route cache and ownership", () => {
     cache.clear();
     vi.clearAllMocks();
     first.mockResolvedValue({ id: "article" });
+    vi.mocked(getDb).mockReturnValue({
+      select: () => ({ from: () => ({ where: () => ({ get: first }) }) }),
+      insert: () => ({ values: vi.fn().mockResolvedValue(undefined) }),
+    } as never);
     vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(Response.json([[["你好"]], null, "en"]))));
   });
   afterEach(() => vi.unstubAllGlobals());

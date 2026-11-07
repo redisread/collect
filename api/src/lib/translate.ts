@@ -1,7 +1,7 @@
 import { load, type CheerioAPI } from "cheerio/slim";
 
 const BLOCKS = "p,h1,h2,h3,h4,h5,h6,li,blockquote,figcaption,td,th,div,section,article";
-const SKIP = "script,style,pre,code,kbd,samp,svg,math,textarea,[translate=no]";
+const SKIP = "script,style,pre,code,kbd,samp,svg,math,textarea,img,picture,video,audio,source,[translate=no]";
 
 export function splitTranslationText(text: string, size = 1200): string[] {
   const chars = Array.from(text);
@@ -37,6 +37,45 @@ export async function googleTranslate(text: string, target: string, source: stri
     parts.push(translated);
   }
   return { translated: parts.join(""), detectedLang };
+}
+
+/** Long runs are split at DOM boundaries so a request can never cut through a tag. */
+async function translateInlineHtml(
+  html: string,
+  translate: (text: string) => Promise<{ translated: string; detectedLang: string }>,
+): Promise<{ html: string; text: string; detectedLang: string }> {
+  const source = load(html, {}, false);
+  if (Array.from(html).length > 1200) {
+    let detectedLang = "auto";
+    for (const node of source.root().contents().toArray()) {
+      if (node.type === "text" && node.data.trim()) {
+        const result = await translate(node.data.trim());
+        const leading = node.data.match(/^\s*/)?.[0] ?? "";
+        const trailing = node.data.match(/\s*$/)?.[0] ?? "";
+        node.data = leading + result.translated + trailing;
+        detectedLang = result.detectedLang;
+      } else if ("tagName" in node) {
+        const contents = source(node).html() || "";
+        if (!contents.trim()) continue;
+        const result = await translateInlineHtml(contents, translate);
+        source(node).html(result.html);
+        detectedLang = result.detectedLang;
+      }
+    }
+    return { html: source.html(), text: source.text(), detectedLang };
+  }
+  const result = await translate(html);
+  const output = load(result.translated, {}, false);
+  const sourceElements = source("*").toArray().filter(node => "tagName" in node);
+  const outputElements = output("*").toArray().filter(node => "tagName" in node);
+  if (sourceElements.length !== outputElements.length ||
+      sourceElements.some((node, index) => node.tagName !== outputElements[index].tagName)) {
+    throw new Error("翻译结果的文章结构不完整");
+  }
+  sourceElements.forEach((node, index) => {
+    outputElements[index].attribs = { ...node.attribs };
+  });
+  return { html: output.html(), text: output.text(), detectedLang: result.detectedLang };
 }
 
 /** Translate complete inline runs, keeping sentence context and validating returned markup. */
@@ -96,20 +135,7 @@ export async function translateHtml(
   await Promise.all(Array.from({ length: Math.min(4, jobs.length) }, async () => {
     while (index < jobs.length) {
       const i = index++;
-      const result = await translate(jobs[i]);
-      const source = load(jobs[i], {}, false);
-      const output = load(result.translated, {}, false);
-      const sourceElements = source("*").toArray().filter(node => "tagName" in node);
-      const outputElements = output("*").toArray().filter(node => "tagName" in node);
-      // Reject missing or injected markup before accepting or caching a result.
-      if (sourceElements.length !== outputElements.length ||
-          sourceElements.some((node, j) => node.tagName !== outputElements[j].tagName)) {
-        throw new Error("翻译结果的文章结构不完整");
-      }
-      sourceElements.forEach((node, j) => {
-        outputElements[j].attribs = { ...node.attribs };
-      });
-      results[i] = { html: output.html(), text: output.text(), detectedLang: result.detectedLang };
+      results[i] = await translateInlineHtml(jobs[i], translate);
     }
   }));
   const pattern = new RegExp("<!--" + marker + "-(\\d+)-->", "g");
