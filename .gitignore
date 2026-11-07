@@ -79,5 +79,6 @@ mobile/ios/.symlinks/
 **/.turbo/
 
 # .claude/
+.claude/worktrees/
 # .opencode/
 # openspec/
