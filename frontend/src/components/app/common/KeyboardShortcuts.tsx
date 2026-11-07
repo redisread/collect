@@ -1,5 +1,4 @@
 import { useEffect } from "react";
-import { useArticleStore } from "@/lib/store/articleStore";
 import { useFeedStore } from "@/lib/store/feedStore";
 import { useUiStore } from "@/lib/store/uiStore";
 
@@ -13,8 +12,8 @@ export function KeyboardShortcuts() {
 			// 忽略输入框中的按键
 			const target = e.target as HTMLElement;
 			if (
-				target.tagName === "INPUT" ||
-				target.tagName === "TEXTAREA" ||
+				e.metaKey || e.ctrlKey || e.altKey ||
+				target.closest("input, textarea, select, button, a, [role=menu], [role=tablist]") ||
 				target.isContentEditable
 			) {
 				return;

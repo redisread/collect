@@ -70,6 +70,8 @@ export interface TranslationSegment {
 }
 
 export interface TranslationResult {
+  translatedHtml?: string;
+  bilingualHtml?: string;
   original: string;
   translated: string;
   detectedLang?: string;

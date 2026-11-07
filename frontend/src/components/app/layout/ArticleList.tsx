@@ -4,13 +4,16 @@ import { useFeedStore } from "@/lib/store/feedStore";
 import { ArticleCard } from "../article/ArticleCard";
 import { ArticleCardSkeleton } from "../article/ArticleSkeleton";
 import { EmptyState } from "../common/EmptyState";
-import { cn } from "@/lib/utils/cn";
 
 export function ArticleList() {
 	const { articles, isLoading, hasMore, fetchMoreArticles, total, sortOrder, setSortOrder } =
 		useArticleStore();
 	const { selectedSource } = useFeedStore();
 	const bottomRef = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		void useArticleStore.getState().fetchArticles(useFeedStore.getState().selectedSource);
+	}, [sortOrder]);
 
 	// 无限滚动加载
 	const handleObserver = useCallback(

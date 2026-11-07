@@ -1,204 +1,60 @@
 import { Hono } from "hono";
+import { z } from "zod";
+import { and, eq } from "drizzle-orm";
+import { getDb } from "../db";
+import { articles, translationHistory } from "../db/schema";
 import { authMiddleware } from "../middleware/auth";
 import type { CloudflareEnv } from "../types";
-import { parseHTML } from "linkedom";
 import { SUPPORTED_LANG_CODES, DEFAULT_TARGET_LANG } from "../config/languages";
-import { getDb } from "../db";
+import { googleTranslate, translateHtml } from "../lib/translate";
 
 const translateRoute = new Hono<{ Bindings: CloudflareEnv; Variables: { userId: string } }>();
-
 translateRoute.use("/*", authMiddleware);
+const language = z.string().refine(value => SUPPORTED_LANG_CODES.has(value), "不支持的翻译语言");
+const requestSchema = z.object({
+  articleId: z.string().min(1, "缺少文章编号"),
+  content: z.string().min(1, "缺少文章内容").max(150_000, "文章过长，暂时无法翻译").refine(value => !!value.trim(), "缺少文章内容"),
+  sourceLang: z.union([z.literal("auto"), language]).default("auto"),
+  targetLang: language.default(DEFAULT_TARGET_LANG),
+});
 
-interface TranslationSegment {
-	tag: string;        // 元素标签名，用于重建 HTML
-	original: string;
-	translated: string;
-}
-
-// 速率限制：per-user 10 次/60s
-async function checkRateLimit(kv: KVNamespace, userId: string): Promise<boolean> {
-	const key = `rate:translate:${userId}`;
-	const now = Date.now();
-	const windowMs = 60_000;
-	const maxRequests = 10;
-
-	const raw = await kv.get(key, "json") as { count: number; windowStart: number } | null;
-	if (!raw || (now - raw.windowStart) > windowMs) {
-		await kv.put(key, JSON.stringify({ count: 1, windowStart: now }), { expirationTtl: 120 });
-		return true;
-	}
-	if (raw.count >= maxRequests) {
-		return false;
-	}
-	raw.count += 1;
-	await kv.put(key, JSON.stringify(raw), { expirationTtl: 120 });
-	return true;
-}
-
-// 从 HTML 中提取可翻译的文本段，保留标签信息用于重建
-function extractSegments(html: string): TranslationSegment[] {
-	const { document } = parseHTML(html);
-	const segments: TranslationSegment[] = [];
-
-	// 块级元素选择器
-	const blockSelector = "p, h1, h2, h3, h4, h5, h6, li, blockquote, figcaption, td, th";
-	const elements = document.querySelectorAll(blockSelector);
-
-	for (let i = 0; i < elements.length; i++) {
-		const el = elements[i];
-		const text = el.textContent?.trim();
-		if (text && text.length > 0) {
-			segments.push({
-				tag: el.tagName.toLowerCase(),
-				original: text,
-				translated: "",
-			});
-		}
-	}
-
-	// 降级：无块级元素时按空行分段
-	if (segments.length === 0) {
-		const bodyText = document.body?.textContent?.trim();
-		if (bodyText) {
-			const parts = bodyText.split(/\n\s*\n/).filter((t: string) => t.trim());
-			for (const part of parts) {
-				segments.push({ tag: "p", original: part.trim(), translated: "" });
-			}
-		}
-	}
-
-	return segments;
-}
-
-// 调用 Google Translate 翻译一段文本
-async function translateText(text: string, targetLang: string, sourceLang: string): Promise<string> {
-	const url = new URL("https://translate.googleapis.com/translate_a/single");
-	url.searchParams.set("client", "dict-chrome-ex");
-	url.searchParams.set("sl", sourceLang);
-	url.searchParams.set("tl", targetLang);
-	url.searchParams.set("dt", "t");
-	url.searchParams.set("q", text);
-
-	const response = await fetch(url.toString(), {
-		headers: {
-			"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-		},
-	});
-
-	if (!response.ok) {
-		throw new Error(`Google Translate API error: ${response.status}`);
-	}
-
-	const data = (await response.json()) as Array<Array<Array<string>>> | null;
-	return data?.[0]?.map((item) => item[0]).join("") ?? "";
-}
-
-// 根据分段重建 HTML，保留原始结构
-function rebuildHtml(segments: TranslationSegment[], mode: "original" | "translated" | "bilingual"): string {
-	let html = "";
-	for (const seg of segments) {
-		const tag = seg.tag || "p";
-		if (mode === "bilingual") {
-			html += `<${tag}>${seg.original}</${tag}><${tag} class="translation-text">${seg.translated}</${tag}>`;
-		} else {
-			const content = mode === "translated" ? seg.translated : seg.original;
-			html += `<${tag}>${content}</${tag}>`;
-		}
-	}
-	return html;
-}
-
-// POST /api/translate — 分段翻译文章
-translateRoute.post("/", async (c) => {
-	const userId = c.get("userId");
-	const kv = c.env.COLLECT_KV;
-
-	// 1. 解析请求
-	const body = await c.req.json() as Record<string, unknown>;
-	const {
-		articleId,
-		content,
-		sourceLang = "auto",
-		targetLang = DEFAULT_TARGET_LANG,
-	} = body as {
-		articleId?: string;
-		content?: string;
-		sourceLang?: string;
-		targetLang?: string;
-	};
-
-	if (!articleId || typeof articleId !== "string") {
-		return c.json({ success: false, error: "缺少 articleId 参数" }, 400);
-	}
-	if (!content || typeof content !== "string" || content.trim().length === 0) {
-		return c.json({ success: false, error: "缺少文章内容" }, 400);
-	}
-	if (typeof targetLang !== "string" || !SUPPORTED_LANG_CODES.has(targetLang)) {
-		return c.json({ success: false, error: "不支持的目标语言" }, 400);
-	}
-
-	// 2. 检查 KV 缓存
-	const cacheKey = `translation:${userId}:${articleId}:${targetLang}`;
-	const cached = await kv.get(cacheKey, "json") as {
-		segments: TranslationSegment[];
-		targetLang: string;
-		detectedLang: string;
-		timestamp: number;
-	} | null;
-
-	if (cached && (Date.now() - cached.timestamp) < 7 * 24 * 60 * 60 * 1000) {
-		return c.json({ success: true, data: cached, fromCache: true });
-	}
-
-	// 3. 速率限制
-	const allowed = await checkRateLimit(kv, userId);
-	if (!allowed) {
-		return c.json({ success: false, error: "翻译请求过于频繁，请稍后再试" }, 429);
-	}
-
-	// 4. 提取文本段
-	const segments = extractSegments(content);
-	if (segments.length === 0) {
-		return c.json({ success: false, error: "未找到可翻译的文本" }, 400);
-	}
-
-	// 5. 逐段翻译
-	let detectedLang = sourceLang as string;
-	for (let i = 0; i < segments.length; i++) {
-		try {
-			const translated = await translateText(segments[i].original, targetLang, sourceLang as string);
-			segments[i].translated = translated;
-			if (!detectedLang || detectedLang === "auto") {
-				detectedLang = targetLang;
-			}
-		} catch (error) {
-			console.error(`翻译第 ${i + 1} 段失败:`, error);
-			segments[i].translated = segments[i].original; // 失败时保留原文
-		}
-	}
-
-	// 6. 存储到 KV
-	const result = {
-		segments,
-		targetLang,
-		detectedLang,
-		timestamp: Date.now(),
-	};
-	await kv.put(cacheKey, JSON.stringify(result), { expirationTtl: 604800 }); // 7 天
-
-	// 7. 写入翻译历史记录
-	try {
-		const rawDb = c.env.DB;
-		await rawDb.prepare(
-			`INSERT INTO translation_history (user_id, article_id, target_lang, source_lang)
-			 VALUES (?, ?, ?, ?)`
-		).bind(userId, articleId, targetLang, sourceLang).run();
-	} catch (err) {
-		console.error("写入翻译历史失败:", err);
-		// 不阻塞主流程
-	}
-
-	return c.json({ success: true, data: result });
+translateRoute.post("/", async c => {
+  const parsed = requestSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ success: false, error: parsed.error.issues[0].message }, 400);
+  const { articleId, content, sourceLang, targetLang } = parsed.data;
+  const userId = c.get("userId");
+  const db = getDb(c.env.DB);
+  const owned = await db.select({ id: articles.id, title: articles.title }).from(articles)
+    .where(and(eq(articles.id, articleId), eq(articles.userId, userId))).get();
+  if (!owned) return c.json({ success: false, error: "文章不存在" }, 404);
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(content));
+  const hash = Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, "0")).join("");
+  const key = `translation:v4:${userId}:${articleId}:${sourceLang}:${targetLang}:${hash}`;
+  const cached = await c.env.COLLECT_KV.get(key, "json");
+  if (cached) return c.json({ success: true, data: cached, fromCache: true });
+  const rateKey = `rate:translate:${userId}`;
+  const now = Date.now();
+  const rate = await c.env.COLLECT_KV.get(rateKey, "json") as { count: number; windowStart: number } | null;
+  const count = rate && now - rate.windowStart < 60_000 ? rate.count : 0;
+  if (count >= 10) return c.json({ success: false, error: "翻译请求过于频繁，请稍后再试" }, 429);
+  await c.env.COLLECT_KV.put(rateKey, JSON.stringify({ count: count + 1, windowStart: count ? rate!.windowStart : now }), { expirationTtl: 120 });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60_000);
+  try {
+    const translated = await translateHtml(content, targetLang, text => googleTranslate(text, targetLang, sourceLang, controller.signal));
+    const result = { ...translated, targetLang, timestamp: Date.now() };
+    await c.env.COLLECT_KV.put(key, JSON.stringify(result), { expirationTtl: 604800 });
+    try {
+      await db.insert(translationHistory).values({
+        id: crypto.randomUUID(), userId, articleId, targetLang,
+        sourceLang: result.detectedLang, articleTitle: owned.title,
+      });
+    } catch { console.warn(JSON.stringify({ event: "translation_history_write_failed" })); }
+    return c.json({ success: true, data: result });
+  } catch {
+    controller.abort();
+    return c.json({ success: false, error: "Google 翻译暂时不可用或请求超时，请稍后重试" }, 502);
+  } finally { clearTimeout(timeout); }
 });
 
 export default translateRoute;

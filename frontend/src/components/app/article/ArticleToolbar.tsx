@@ -1,225 +1,101 @@
 import { useArticleStore, SUPPORTED_LANGUAGES } from "@/lib/store/articleStore";
-import { cn } from "@/lib/utils/cn";
 import type { Article } from "@/lib/types";
-import { useState } from "react";
+import { useEffect, useId, useRef } from "react";
+import { escapeHtml } from "@/lib/utils/sanitize";
 
 interface ArticleToolbarProps {
-	article: Article;
-	onOpenNotes?: () => void;
+  article: Article;
+  onOpenNotes?: () => void;
 }
 
 export function ArticleToolbar({ article, onOpenNotes }: ArticleToolbarProps) {
-	const {
-		toggleStarred,
-		toggleReadLater,
-		translateArticle,
-		translations,
-		isTranslating,
-		extractArticle,
-		isExtracting,
-		targetLanguage,
-		setTargetLanguage,
-	} =
-		useArticleStore();
+  const {
+    toggleStarred, toggleReadLater, translateArticle, translateFullArticle, isTranslating,
+    extractArticle, isExtracting, extractionError, translationError,
+    targetLanguage, setTargetLanguage,
+  } = useArticleStore();
+  const menuId = useId();
+  const menu = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const closeOnResize = () => menu.current?.hidePopover();
+    window.addEventListener("resize", closeOnResize);
+    return () => window.removeEventListener("resize", closeOnResize);
+  }, []);
+  const busy = isExtracting || isTranslating;
+  const buttonClass = "min-h-10 rounded-lg px-3 text-sm transition-colors duration-150 hover:bg-[var(--bg-card-hover)] disabled:opacity-50";
 
-	const hasTranslation = !!translations[article.id];
-	const hasContent = !!article.content;
-	const [langDropdownOpen, setLangDropdownOpen] = useState(false);
+  function closeMenu() {
+    menu.current?.hidePopover();
+    trigger.current?.focus();
+  }
 
-	// 获取翻译文本（优先使用 content，没有则使用 summary）
-	const getTranslateText = () => {
-		// 提取纯文本，去除 HTML 标签
-		const text = article.content || article.summary || "";
-		return text.replace(/<[^>]*>/g, "").trim();
-	};
-
-	const handleTranslate = () => {
-		const text = getTranslateText();
-		if (text) {
-			translateArticle(article.id, article.content || text, targetLanguage);
-		}
-	};
-
-	const currentLang = SUPPORTED_LANGUAGES.find((l) => l.code === targetLanguage);
-
-	return (
-		<div className="flex items-center gap-1 px-4 py-2 border-b border-[var(--border-light)] bg-[var(--bg-main)]">
-			{/* 收藏 */}
-			<button
-				onClick={() => toggleStarred(article.id)}
-				title={article.isStarred ? "取消收藏" : "收藏"}
-				className={cn(
-					"flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs",
-					"transition-all duration-[var(--transition-base)]",
-					article.isStarred
-						? "text-amber-500 bg-amber-50 dark:bg-amber-900/20"
-						: "text-[var(--text-tertiary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]"
-				)}
-			>
-				<svg
-					className="w-4 h-4"
-					fill={article.isStarred ? "currentColor" : "none"}
-					viewBox="0 0 24 24"
-					stroke="currentColor"
-					strokeWidth={1.5}
-				>
-					<path d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z" />
-				</svg>
-				收藏
-			</button>
-
-			{/* 稍后阅读 */}
-			<button
-				onClick={() => toggleReadLater(article.id)}
-				title={article.isReadLater ? "移出稍后阅读" : "稍后阅读"}
-				className={cn(
-					"flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs",
-					"transition-all duration-[var(--transition-base)]",
-					article.isReadLater
-						? "text-[var(--accent)] bg-[var(--accent-light)]"
-						: "text-[var(--text-tertiary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]"
-				)}
-			>
-				<svg
-					className="w-4 h-4"
-					fill={article.isReadLater ? "currentColor" : "none"}
-					viewBox="0 0 24 24"
-					stroke="currentColor"
-					strokeWidth={1.5}
-				>
-					<path d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0Z" />
-				</svg>
-				稍后读
-			</button>
-
-			{/* 笔记按钮 */}
-			{onOpenNotes && (
-				<button
-					onClick={onOpenNotes}
-					title="查看笔记"
-					className={cn(
-						"flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs",
-						"text-[var(--text-tertiary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]",
-						"transition-all duration-[var(--transition-base)]"
-					)}
-				>
-					<svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-						<path d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
-					</svg>
-					笔记
-				</button>
-			)}
-
-			{/* 提取全文 */}
-			{!hasContent && (
-				<button
-					onClick={() => extractArticle(article.id)}
-					disabled={isExtracting}
-					title="提取全文内容"
-					className={cn(
-						"flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs",
-						"transition-all duration-[var(--transition-base)]",
-						isExtracting
-							? "opacity-50 cursor-wait text-[var(--text-tertiary)]"
-							: "text-[var(--text-tertiary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]"
-					)}
-				>
-					{isExtracting ? (
-						<svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-							<path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-						</svg>
-					) : (
-						<svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-							<path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-						</svg>
-					)}
-					{isExtracting ? "提取中" : "提取全文"}
-				</button>
-			)}
-
-			{/* 翻译语言选择 + 翻译按钮 */}
-			<div className="relative">
-				<button
-					onClick={() => setLangDropdownOpen(!langDropdownOpen)}
-					title={`当前翻译语言: ${currentLang?.label}`}
-					className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs text-[var(--text-tertiary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] transition-all duration-[var(--transition-base)]"
-				>
-					<svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-						<path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9.004 9.004 0 0 0 8.716-6.747M12 21a9.004 9.004 0 0 1-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 0 1 7.843 4.504M12 3a8.997 8.997 0 0 0-7.843 4.504m15.686 0A11.953 11.953 0 0 1 12 10.5c-2.998 0-5.74-1.1-7.843-2.996m15.686 0A8.959 8.959 0 0 1 21 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0 1 12 16.5a17.92 17.92 0 0 1-8.716-2.247m0 0A8.966 8.966 0 0 1 3 12c0-1.264.26-2.466.729-3.558" />
-					</svg>
-					<span className="max-w-[40px] truncate">{currentLang?.label ?? "中文"}</span>
-				</button>
-				{langDropdownOpen && (
-					<>
-						<div className="fixed inset-0 z-10" onClick={() => setLangDropdownOpen(false)} />
-						<div className="absolute bottom-full left-0 mb-1 z-20 min-w-[140px] rounded-lg border border-[var(--border)] bg-[var(--bg-card)] shadow-lg overflow-hidden">
-							{SUPPORTED_LANGUAGES.map((lang) => (
-								<button
-									key={lang.code}
-									onClick={() => {
-										setTargetLanguage(lang.code);
-										setLangDropdownOpen(false);
-									}}
-									className={cn(
-										"w-full px-3 py-2 text-left text-xs transition-colors",
-										lang.code === targetLanguage
-											? "bg-[var(--accent)] text-white"
-											: "text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]"
-									)}
-								>
-									{lang.label}
-								</button>
-							))}
-						</div>
-					</>
-				)}
-			</div>
-
-			<button
-				onClick={handleTranslate}
-				disabled={isTranslating}
-				title={`翻译为 ${currentLang?.label ?? "中文"}`}
-				className={cn(
-					"flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs",
-					"transition-all duration-[var(--transition-base)]",
-					isTranslating
-						? "opacity-50 cursor-wait"
-						: hasTranslation
-							? "text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20"
-							: "text-[var(--text-tertiary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]"
-				)}
-			>
-				{isTranslating ? (
-					<svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-						<path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-					</svg>
-				) : (
-					<svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-						<path strokeLinecap="round" strokeLinejoin="round" d="M10.5 21l6-6m-6 6h12" />
-					</svg>
-				)}
-				{isTranslating ? "翻译中" : hasTranslation ? "已翻译" : "翻译"}
-			</button>
-
-			<div className="flex-1" />
-
-			{/* 在浏览器中打开 */}
-			<a
-				href={article.url}
-				target="_blank"
-				rel="noopener noreferrer"
-				title="在浏览器中打开"
-				className={cn(
-					"flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs",
-					"text-[var(--text-tertiary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]",
-					"transition-all duration-[var(--transition-base)]"
-				)}
-			>
-				<svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-					<path d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
-				</svg>
-				原文
-			</a>
-		</div>
-	);
+  return (
+    <div className="shrink-0 border-b border-[var(--border-light)] bg-[var(--bg-main)] px-3 py-2">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <select
+          aria-label="翻译目标语言"
+          value={targetLanguage}
+          disabled={busy}
+          onChange={event => setTargetLanguage(event.target.value)}
+          className="min-h-10 min-w-28 max-w-36 flex-1 rounded-lg border border-[var(--border)] bg-[var(--bg-main)] px-2 text-sm"
+        >
+          {SUPPORTED_LANGUAGES.map(lang => <option key={lang.code} value={lang.code}>{lang.label}</option>)}
+        </select>
+        <button onClick={() => void translateFullArticle()} disabled={busy}
+          className={buttonClass + " bg-[var(--accent-light)] text-[var(--accent)]"}>
+          {isExtracting ? "提取全文…" : isTranslating ? "翻译中…" : "翻译全文"}
+        </button>
+        <button aria-label={article.isStarred ? "取消收藏" : "收藏"} aria-pressed={article.isStarred}
+          onClick={() => void toggleStarred(article.id)} className={buttonClass + " ml-auto"}>
+          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24"
+            fill={article.isStarred ? "var(--brand-yellow)" : "none"} stroke="currentColor" strokeWidth="1.6">
+            <path strokeLinejoin="round" d="m12 3 2.8 5.7 6.3.9-4.6 4.4 1.1 6.3-5.6-3-5.6 3 1.1-6.3L3 9.6l6.2-.9Z" />
+          </svg>
+        </button>
+        <button ref={trigger} popoverTarget={menuId} aria-label="更多文章操作"
+          aria-haspopup="menu" className={buttonClass}>•••</button>
+      </div>
+      <div ref={menu} id={menuId} popover="auto" role="menu" aria-label="文章操作"
+        className="article-actions rounded-xl border border-[var(--border)] bg-[var(--bg-main)] p-1.5 text-[var(--text-primary)] shadow-[var(--shadow-md)]"
+        onToggle={event => {
+          if (event.newState !== "open" || !menu.current || !trigger.current) return;
+          const rect = trigger.current.getBoundingClientRect();
+          menu.current.style.left = Math.max(8, Math.min(rect.right - 200, window.innerWidth - 208)) + "px";
+          menu.current.style.top = Math.max(8, Math.min(rect.bottom + 8, window.innerHeight - menu.current.offsetHeight - 8)) + "px";
+          menu.current.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+        }}
+        onKeyDown={event => {
+          const items = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)'));
+          const index = items.indexOf(document.activeElement as HTMLElement);
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            items[(index + (event.key === "ArrowDown" ? 1 : items.length - 1)) % items.length]?.focus();
+          }
+          if (event.key === "Escape") { event.preventDefault(); closeMenu(); }
+        }}>
+        <button role="menuitem" className={buttonClass + " w-full text-left"}
+          onClick={() => { void toggleReadLater(article.id); closeMenu(); }}>
+          {article.isReadLater ? "移出稍后读" : "稍后读"}
+        </button>
+        <button role="menuitem" className={buttonClass + " w-full text-left"}
+          onClick={() => { onOpenNotes?.(); closeMenu(); }}>笔记</button>
+        <button role="menuitem" disabled={busy} className={buttonClass + " w-full text-left"}
+          onClick={() => { void extractArticle(article.id); closeMenu(); }}>重新提取全文</button>
+        <a role="menuitem" href={article.url} target="_blank" rel="noopener noreferrer"
+          className={buttonClass + " flex items-center"} onClick={closeMenu}>打开原文 ↗</a>
+      </div>
+      {busy && <p role="status" className="mt-2 text-xs text-[var(--text-secondary)]">
+        {isExtracting ? "正在获取完整文章…" : "正在翻译，请稍候…"}
+      </p>}
+      {(translationError || extractionError) && <div role="alert" className="mt-2 text-sm text-[var(--text-secondary)]">
+        <p>{translationError || extractionError}</p>
+        {extractionError && article.summary && !article.content && <button
+          disabled={busy} className={buttonClass + " mt-1 underline underline-offset-4"}
+          onClick={() => void translateArticle(article.id, "<p>" + escapeHtml(article.summary!) + "</p>", targetLanguage)}>
+          仅翻译摘要
+        </button>}
+      </div>}
+    </div>
+  );
 }
