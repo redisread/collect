@@ -17,7 +17,7 @@
   - Verify: Queue unit/integration tests。
 
 - [x] 5. 合并 CI/CD
-  - Acceptance: PR/main 质量门覆盖 API 与 Web；main 只部署单一 Worker，secrets 仅来自 GitHub Secrets。
+  - Acceptance: GitHub PR/main 质量门覆盖 API 与 Web；Cloudflare Workers Builds 监听 main 部署单一 Worker，部署凭据和运行时 secrets 由 Cloudflare 管理。
   - Verify: workflow static review、local parity commands。
 
 - [x] 6. 更新架构与运维文档

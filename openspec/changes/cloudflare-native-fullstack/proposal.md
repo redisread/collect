@@ -30,7 +30,7 @@ Build order: `unified-worker` → `same-origin-web` → `feed-sync-queue` → `m
 - 手动刷新返回 `202 Accepted`，Feed 抓取由 Queue consumer 完成，消息失败可重试并进入 DLQ。
 - D1 使用 Drizzle，R2 binding 保留给附件/图片/媒体；本次不虚构不存在的媒体业务接口。
 - Wrangler 配置使用 `wrangler.jsonc`、当天 compatibility date、生成的 binding types、observability 与最小必要 bindings。
-- PR 与 `main` 都执行类型、测试、构建和 Wrangler dry-run；只有 `main` push 在质量门通过后部署。
+- GitHub 对 PR 与 `main` 执行类型、测试、构建和 Wrangler dry-run；合并前质量门通过，Cloudflare Workers Builds 在 `main` push 后独立构建并部署（2026-11-07 用户更新要求）。
 - 不创建或修改生产资源、不执行生产 D1 migration、不推送代码。
 
 ## Boundaries
