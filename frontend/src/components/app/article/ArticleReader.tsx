@@ -5,6 +5,7 @@ import type { TextRange } from "@/lib/types";
 import { ArticleToolbar } from "./ArticleToolbar";
 import { ArticleDetailSkeleton } from "./ArticleSkeleton";
 import { formatFullDate } from "@/lib/utils/date";
+import { sanitizeHtml } from "@/lib/utils/sanitize";
 import { cn } from "@/lib/utils/cn";
 import { VimShortcuts } from "@/components/app/common/VimShortcuts";
 import { ReadingProgress } from "./ReadingProgress";
@@ -61,9 +62,12 @@ function getElementByXPath(xpath: string, context: Node): Node | null {
 export function ArticleReader() {
 	const {
 		selectedArticle,
+		selectedArticleId,
+		selectArticle,
+		detailError,
+		targetLanguage,
 		isLoadingDetail,
 		translations,
-		clearTranslation,
 		extractArticle,
 		isExtracting,
 		annotations,
@@ -74,6 +78,7 @@ export function ArticleReader() {
 	const contentRef = useRef<HTMLDivElement>(null);
 	const articleContentRef = useRef<HTMLDivElement>(null);
 	const [viewMode, setViewMode] = useState<ViewMode>("original");
+	const viewArticleId = useRef<string | undefined>(undefined);
 
 	// 标注相关状态
 	const [highlightToolbar, setHighlightToolbar] = useState<{
@@ -162,7 +167,7 @@ export function ArticleReader() {
 				console.error("Failed to render highlight:", error);
 			}
 		});
-	}, [annotations, selectedArticle?.id]);
+	}, [annotations, selectedArticle?.id, viewMode]);
 
 	// 处理文本选择
 	const handleTextSelection = useCallback(() => {
@@ -256,7 +261,7 @@ export function ArticleReader() {
 	// 监听视图模式切换事件（来自 VimShortcuts）
 	useEffect(() => {
 		const handleToggleViewMode = () => {
-			if (translations[selectedArticle?.id || ""]) {
+			if (translations[`${selectedArticle?.id}:${targetLanguage}`]) {
 				setViewMode((prev) => {
 					if (prev === "original") return "translated";
 					if (prev === "translated") return "both";
@@ -267,11 +272,25 @@ export function ArticleReader() {
 
 		window.addEventListener("toggle-view-mode", handleToggleViewMode);
 		return () => window.removeEventListener("toggle-view-mode", handleToggleViewMode);
-	}, [selectedArticle?.id, translations]);
+	}, [selectedArticle?.id, translations, targetLanguage]);
 
-	const translation = selectedArticle ? translations[selectedArticle.id] : null;
+	const translation = selectedArticle ? translations[`${selectedArticle.id}:${targetLanguage}`] : null;
 	const hasTranslation = !!translation;
 	const hasContent = !!selectedArticle?.content;
+
+	useEffect(() => {
+		const changedArticle = viewArticleId.current !== selectedArticle?.id;
+		viewArticleId.current = selectedArticle?.id;
+		setViewMode(!changedArticle && translation ? "both" : "original");
+	}, [translation, targetLanguage, selectedArticle?.id]);
+
+	if (detailError) return (
+		<div role="alert" className="flex flex-1 flex-col items-center justify-center gap-4 px-6">
+			<p className="text-sm text-[var(--text-secondary)]">{detailError}</p>
+			<button className="rounded-lg bg-[var(--accent-light)] px-4 py-2 text-[var(--accent)]"
+				onClick={() => void selectArticle(selectedArticleId)}>重新加载</button>
+		</div>
+	);
 
 	if (isLoadingDetail) {
 		return <ArticleDetailSkeleton />;
@@ -298,15 +317,15 @@ export function ArticleReader() {
 		<>
 			<VimShortcuts contentRef={contentRef} />
 
-			<div className="flex flex-col h-full">
+			<div className="flex min-h-0 min-w-0 flex-col h-full">
 				{/* 阅读进度条 */}
 				{hasContent && <ReadingProgress contentRef={contentRef} articleId={selectedArticle.id} />}
 
 				{/* 工具栏 */}
-				<ArticleToolbar article={selectedArticle} onOpenNotes={() => setNotesSidebarOpen(true)} />
+				<ArticleToolbar key={selectedArticle.id} article={selectedArticle} onOpenNotes={() => setNotesSidebarOpen(true)} />
 
 				{/* 正文区域 */}
-				<div ref={contentRef} className="flex-1 overflow-y-auto relative">
+				<div ref={contentRef} className="min-h-0 flex-1 overflow-y-auto relative">
 					<article className="max-w-[680px] mx-auto px-6 py-8 animate-fade-in">
 						{/* 来源信息 */}
 						<div className="flex items-center gap-2 mb-4">
@@ -353,61 +372,41 @@ export function ArticleReader() {
 								/>
 							)}
 
-							{/* 视图模式切换（当有翻译时显示） */}
 							{hasTranslation && (
-								<div className="flex items-center gap-2 mb-4 pb-4 border-b border-[var(--border-light)]">
-									<span className="text-xs text-[var(--text-tertiary)]">显示:</span>
-									<button
-										onClick={() => setViewMode("original")}
-										className={cn(
-											"px-2 py-1 rounded text-xs transition-colors",
-											viewMode === "original"
-												? "bg-[var(--accent)] text-white"
-												: "text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]"
-										)}
-									>
-										原文
-									</button>
-									<button
-										onClick={() => setViewMode("both")}
-										className={cn(
-											"px-2 py-1 rounded text-xs transition-colors",
-											viewMode === "both"
-												? "bg-[var(--accent)] text-white"
-												: "text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]"
-										)}
-									>
-										双语
-									</button>
-									<button
-										onClick={() => setViewMode("translated")}
-										className={cn(
-											"px-2 py-1 rounded text-xs transition-colors",
-											viewMode === "translated"
-												? "bg-[var(--accent)] text-white"
-												: "text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]"
-										)}
-									>
-										译文
-									</button>
-									<button
-										onClick={() => clearTranslation(selectedArticle.id)}
-										className="ml-auto text-xs text-[var(--text-tertiary)] hover:text-red-500 transition-colors"
-									>
-										清除翻译
-									</button>
+								<div role="tablist" aria-label="阅读语言视图" className="mb-6 flex w-fit gap-1 rounded-xl bg-[var(--bg-card-hover)] p-1">
+									{(["original", "both", "translated"] as const).map((mode, index) => (
+										<button key={mode} role="tab" id={`reader-tab-${mode}`} aria-controls="reader-panel"
+											aria-selected={viewMode === mode} tabIndex={viewMode === mode ? 0 : -1}
+											onClick={() => setViewMode(mode)}
+											onKeyDown={event => {
+												const modes = ["original", "both", "translated"] as const;
+												let next = index;
+												if (event.key === "ArrowRight") next = (index + 1) % 3;
+												else if (event.key === "ArrowLeft") next = (index + 2) % 3;
+												else if (event.key === "Home") next = 0;
+												else if (event.key === "End") next = 2;
+												else return;
+												event.preventDefault();
+												setViewMode(modes[next]);
+												document.getElementById(`reader-tab-${modes[next]}`)?.focus();
+											}}
+											className={cn("min-h-10 rounded-lg px-4 text-sm transition-colors duration-150",
+												viewMode === mode ? "bg-[var(--bg-main)] text-[var(--text-primary)] shadow-sm" : "text-[var(--text-secondary)]")}>
+											{["原文", "双语", "译文"][index]}
+										</button>
+									))}
 								</div>
 							)}
 
 							{/* 文章正文 */}
-							<div onMouseUp={handleTextSelection}>
-								{(viewMode === "original" || viewMode === "both") && (
+							<div id="reader-panel" role={hasTranslation ? "tabpanel" : undefined} aria-labelledby={hasTranslation ? `reader-tab-${viewMode}` : undefined} tabIndex={hasTranslation ? 0 : undefined} onMouseUp={handleTextSelection}>
+								{(viewMode === "original" || !hasTranslation) && (
 									<>
 										{hasContent ? (
 											<div
 												ref={articleContentRef}
 												className="article-content"
-												dangerouslySetInnerHTML={{ __html: selectedArticle.content || "" }}
+												dangerouslySetInnerHTML={{ __html: sanitizeHtml(selectedArticle.content || "") }}
 											/>
 										) : (
 											<div className="space-y-6">
@@ -457,34 +456,14 @@ export function ArticleReader() {
 									</>
 								)}
 
-								{/* 翻译内容 — 分段渲染 */}
-								{hasTranslation && (viewMode === "translated" || viewMode === "both") && (
-									<div
-										className={cn(
-											"mt-6",
-											viewMode === "both" && "pt-6 border-t border-[var(--border-light)]"
-										)}
-									>
-										{viewMode === "both" && (
-											<h3 className="text-sm font-medium text-[var(--text-secondary)] mb-3">
-												中文翻译
-											</h3>
-										)}
-										<div className="space-y-3 text-[var(--text-secondary)] leading-relaxed">
-											{translation.segments && translation.segments.length > 0 ? (
-												translation.segments.map((seg, i) => (
-													<div key={i} className="translation-segment">
-														{viewMode === "both" && (
-															<p className="text-[var(--text-primary)] mb-1">{seg.original}</p>
-														)}
-														<p className="translation-text">{seg.translated}</p>
-													</div>
-												))
-											) : (
-												<div className="whitespace-pre-wrap">{translation.translated}</div>
-											)}
-										</div>
-									</div>
+								{hasTranslation && viewMode !== "original" && (
+									<>
+										{!hasContent && <p className="mb-4 text-sm text-[var(--text-secondary)]">以下为摘要翻译</p>}
+										<div className="article-content" lang={viewMode === "translated" ? targetLanguage : undefined} dir="auto"
+											dangerouslySetInnerHTML={{ __html: sanitizeHtml(
+												(viewMode === "both" ? translation.bilingualHtml : translation.translatedHtml) || ""
+											) }} />
+									</>
 								)}
 							</div>
 

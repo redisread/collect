@@ -12,29 +12,30 @@ const ALLOWED_TAGS = new Set([
 
 /** 允许的 HTML 属性 */
 const ALLOWED_ATTRS = new Set([
-	"href", "src", "srcset", "alt", "title", "width", "height",
-	"class", "id", "datetime", "cite",
+	"href", "src", "alt", "title", "width", "height",
+	"class", "id", "datetime", "cite", "lang", "dir", "colspan", "rowspan",
 ]);
 
-/** 净化 HTML 内容（服务端安全版本，使用正则实现基本净化） */
+/** Parse before filtering so encoded protocols and malformed attributes cannot bypass checks. */
 export function sanitizeHtml(html: string): string {
-	if (!html) return "";
-
-	// 移除危险标签及其内容
-	let cleaned = html
-		.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
-		.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, "")
-		.replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, "")
-		.replace(/<form\b[^<]*(?:(?!<\/form>)<[^<]*)*<\/form>/gi, "")
-		.replace(/<!--[\s\S]*?-->/g, "")
-		// 移除 on* 事件处理器
-		.replace(/\s+on\w+\s*=\s*["'][^"']*["']/gi, "")
-		.replace(/\s+on\w+\s*=\s*[^\s>]*/gi, "")
-		// 移除 javascript: 协议
-		.replace(/href\s*=\s*["']javascript:[^"']*["']/gi, 'href="#"')
-		.replace(/src\s*=\s*["']javascript:[^"']*["']/gi, 'src="#"');
-
-	return cleaned;
+	if (!html || typeof DOMParser === "undefined") return "";
+	const document = new DOMParser().parseFromString(html, "text/html");
+	document.querySelectorAll("script,style,iframe,object,embed,form,svg,math,template").forEach(node => node.remove());
+	for (const element of Array.from(document.body.querySelectorAll("*"))) {
+		if (!ALLOWED_TAGS.has(element.tagName.toLowerCase())) {
+			element.replaceWith(...element.childNodes);
+			continue;
+		}
+		for (const attribute of Array.from(element.attributes)) {
+			const name = attribute.name.toLowerCase();
+			if (!ALLOWED_ATTRS.has(name)) { element.removeAttribute(name); continue; }
+			if (["href", "src", "cite"].includes(name)) {
+				const value = attribute.value.replace(/[\u0000-\u0020]/g, "");
+				if (!/^(https?:|mailto:|\/|#|\.\/|\.\.\/)/i.test(value)) element.removeAttribute(name);
+			}
+		}
+	}
+	return document.body.innerHTML;
 }
 
 /** 转义 HTML 特殊字符 */

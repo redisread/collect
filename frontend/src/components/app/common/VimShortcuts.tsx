@@ -59,7 +59,7 @@ export function VimShortcuts({ contentRef }: VimShortcutsProps) {
 		toggleStarred,
 		toggleReadLater,
 		extractArticle,
-		translateArticle,
+		translateFullArticle,
 		isExtracting,
 		isTranslating,
 		articles,
@@ -112,20 +112,13 @@ export function VimShortcuts({ contentRef }: VimShortcutsProps) {
 		}
 	}, [contentRef]);
 
-	// 获取翻译文本
-	const getTranslateText = useCallback(() => {
-		if (!selectedArticle) return "";
-		const text = selectedArticle.content || selectedArticle.summary || "";
-		return text.replace(/<[^>]*>/g, "").trim();
-	}, [selectedArticle]);
-
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
 			// 忽略输入框中的按键
 			const target = e.target as HTMLElement;
 			if (
-				target.tagName === "INPUT" ||
-				target.tagName === "TEXTAREA" ||
+				e.metaKey || e.ctrlKey || e.altKey ||
+				target.closest("input, textarea, select, button, a, [role=menu], [role=tablist]") ||
 				target.isContentEditable
 			) {
 				// 在输入框中按 Escape 退出输入框
@@ -235,10 +228,7 @@ export function VimShortcuts({ contentRef }: VimShortcutsProps) {
 				case "translate":
 					if (selectedArticleId && !isTranslating) {
 						e.preventDefault();
-						const text = getTranslateText();
-						if (text) {
-							translateArticle(selectedArticleId, text);
-						}
+						void translateFullArticle();
 					}
 					break;
 
@@ -271,12 +261,12 @@ export function VimShortcuts({ contentRef }: VimShortcutsProps) {
 		toggleStarred,
 		toggleReadLater,
 		extractArticle,
-		translateArticle,
+		translateFullArticle,
 		isExtracting,
 		isTranslating,
 		scrollToTop,
 		scrollToBottom,
-		getTranslateText,
+		
 		selectArticle,
 		setSearchQuery,
 		handleComboKey,

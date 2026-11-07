@@ -38,6 +38,9 @@ interface ArticleStore {
 	selectedArticle: Article | null;
 	isLoading: boolean;
 	isLoadingDetail: boolean;
+	detailError: string | null;
+	translationError: string | null;
+	extractionError: string | null;
 	total: number;
 	page: number;
 	hasMore: boolean;
@@ -70,10 +73,11 @@ interface ArticleStore {
 	toggleReadLater: (articleId: string) => Promise<void>;
 	setSortOrder: (sortOrder: "desc" | "asc") => void;
 	navigateArticle: (direction: "next" | "prev") => Promise<void>;
-	translateArticle: (articleId: string, content: string, targetLang?: string) => Promise<void>;
+	translateArticle: (articleId: string, content: string, targetLang?: string) => Promise<boolean>;
+	translateFullArticle: () => Promise<boolean>;
 	clearTranslation: (articleId: string) => void;
 	setTargetLanguage: (lang: string) => void;
-	extractArticle: (articleId: string) => Promise<void>;
+	extractArticle: (articleId: string) => Promise<Article | null>;
 	batchUpdateArticles: (action: "read" | "unread" | "star" | "unstar", articleIds: string[]) => Promise<void>;
 	setSearchQuery: (query: string) => void;
 	performSearch: (query: string) => Promise<void>;
@@ -88,6 +92,9 @@ interface ArticleStore {
 
 const PAGE_SIZE = 30;
 let articleListRequestId = 0;
+let detailRequestId = 0;
+let translationRequestId = 0;
+let extractionRequestId = 0;
 
 function buildArticleUrl(source: SelectedSource, page: number, sortOrder: string): string {
 	const params = new URLSearchParams({
@@ -110,6 +117,9 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 	selectedArticle: null,
 	isLoading: false,
 	isLoadingDetail: false,
+	detailError: null,
+	translationError: null,
+	extractionError: null,
 	isExtracting: false,
 	total: 0,
 	page: 1,
@@ -185,26 +195,27 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 	},
 
 	selectArticle: async (articleId) => {
-		if (!articleId) {
-			set({ selectedArticleId: null, selectedArticle: null });
-			return;
-		}
-
-		set({ selectedArticleId: articleId, isLoadingDetail: true });
-
-		// 乐观更新已读状态
-		set((state) => ({
-			articles: state.articles.map((a) =>
-				a.id === articleId ? { ...a, isRead: true } : a
-			),
-		}));
-
+		const requestId = ++detailRequestId;
+		++translationRequestId;
+		++extractionRequestId;
+		set({ selectedArticleId: articleId, selectedArticle: null, isLoadingDetail: !!articleId,
+			detailError: null, translationError: null, extractionError: null,
+			isTranslating: false, isExtracting: false, annotations: [] });
+		if (!articleId) return;
 		try {
-			const res = await fetch(`${API_BASE}/api/articles/${articleId}`, { credentials: "include" });
+			const res = await fetch(`${API_BASE}/api/articles/${articleId}`, {
+				credentials: "include", signal: AbortSignal.timeout(15_000),
+			});
 			const json = await res.json() as { success: boolean; data: Article };
-			if (json.success) set({ selectedArticle: json.data });
+			if (!res.ok || !json.success) throw new Error("文章加载失败，请重试");
+			if (requestId === detailRequestId && get().selectedArticleId === articleId) {
+				set(state => ({ selectedArticle: json.data,
+					articles: state.articles.map(article => article.id === articleId ? { ...article, isRead: true } : article) }));
+			}
+		} catch {
+			if (requestId === detailRequestId && get().selectedArticleId === articleId) set({ detailError: "文章加载失败，请重试" });
 		} finally {
-			set({ isLoadingDetail: false });
+			if (requestId === detailRequestId) set({ isLoadingDetail: false });
 		}
 	},
 
@@ -283,57 +294,55 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 		if (nextArticle) await get().selectArticle(nextArticle.id);
 	},
 
+	translateFullArticle: async () => {
+		const { selectedArticle, targetLanguage, isExtracting, isTranslating } = get();
+		if (!selectedArticle || isExtracting || isTranslating) return false;
+		const requestId = detailRequestId;
+		const content = selectedArticle.content || (await get().extractArticle(selectedArticle.id))?.content;
+		if (!content || requestId !== detailRequestId || get().targetLanguage !== targetLanguage) return false;
+		return get().translateArticle(selectedArticle.id, content, targetLanguage);
+	},
+
 	translateArticle: async (articleId, content, targetLang) => {
 		const lang = targetLang || get().targetLanguage;
-		set({ isTranslating: true });
+		const key = `${articleId}:${lang}`;
+		if (get().translations[key]?.original === content) {
+			set({ translationError: null });
+			return true;
+		}
+		const requestId = ++translationRequestId;
+		set({ isTranslating: true, translationError: null });
 		try {
 			const res = await fetch(`${API_BASE}/api/translate`, {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				credentials: "include",
+				method: "POST", headers: { "Content-Type": "application/json" },
+				credentials: "include", signal: AbortSignal.timeout(65_000),
 				body: JSON.stringify({ articleId, content, targetLang: lang }),
 			});
-			const json = await res.json() as {
-				success: boolean;
-				data: { segments: TranslationSegment[]; targetLang: string; detectedLang: string; timestamp: number };
-				error?: string;
-			};
-			if (json.success) {
-				// 合并所有段为单一翻译结果，兼容现有 UI
-				const translated = json.data.segments.map((s) => s.translated).join("\n\n");
-				set((state) => ({
-					translations: {
-						...state.translations,
-						[articleId]: {
-							original: "",
-							translated,
-							segments: json.data.segments,
-							targetLang: json.data.targetLang,
-							detectedLang: json.data.detectedLang,
-							timestamp: json.data.timestamp,
-						},
-					},
-				}));
-			} else {
-				console.error("翻译失败:", json.error);
-			}
+			const json = await res.json() as { success: boolean; data: TranslationResult; error?: string };
+			if (!res.ok || !json.success) throw new Error(json.error || "翻译失败，请重试");
+			if (requestId !== translationRequestId || get().selectedArticleId !== articleId) return false;
+			set(state => ({ extractionError: null, translations: { ...state.translations, [key]: {
+				...json.data, original: content,
+				translated: json.data.segments?.map(segment => segment.translated).join("\n\n") || "",
+			} } }));
+			return true;
 		} catch (error) {
-			console.error("翻译请求失败:", error);
+			if (requestId === translationRequestId) set({ translationError: error instanceof Error ? error.message : "翻译失败，请重试" });
+			return false;
 		} finally {
-			set({ isTranslating: false });
+			if (requestId === translationRequestId) set({ isTranslating: false });
 		}
 	},
 
 	clearTranslation: (articleId) => {
-		set((state) => {
-			const newTranslations = { ...state.translations };
-			delete newTranslations[articleId];
-			return { translations: newTranslations };
-		});
+		set(state => ({ translations: Object.fromEntries(
+			Object.entries(state.translations).filter(([key]) => !key.startsWith(articleId + ":"))
+		) }));
 	},
 
 	setTargetLanguage: (lang) => {
-		set({ targetLanguage: lang });
+		++translationRequestId;
+		set({ targetLanguage: lang, translationError: null, isTranslating: false });
 	},
 
 	toggleRead: async (articleId) => {
@@ -343,28 +352,26 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 	},
 
 	extractArticle: async (articleId) => {
-		set({ isExtracting: true });
+		const requestId = ++extractionRequestId;
+		set({ isExtracting: true, extractionError: null });
 		try {
 			const res = await fetch(`${API_BASE}/api/articles/${articleId}/extract`, {
-				method: "POST",
-				credentials: "include",
+				method: "POST", credentials: "include", signal: AbortSignal.timeout(30_000),
 			});
 			const json = await res.json() as { success: boolean; data: Article };
-			if (json.success) {
-				set((state) => ({
-					selectedArticle:
-						state.selectedArticle?.id === articleId
-							? { ...state.selectedArticle, content: json.data.content }
-							: state.selectedArticle,
-					articles: state.articles.map((a) =>
-						a.id === articleId && json.data.summary
-							? { ...a, summary: json.data.summary }
-							: a
-					),
-				}));
-			}
+			if (!res.ok || !json.success || !json.data.content?.trim()) throw new Error("未能提取全文");
+			if (requestId !== extractionRequestId || get().selectedArticleId !== articleId) return null;
+			set(state => ({
+				selectedArticle: state.selectedArticle?.id === articleId ? { ...state.selectedArticle, content: json.data.content } : state.selectedArticle,
+				translations: Object.fromEntries(Object.entries(state.translations).filter(([key]) => !key.startsWith(articleId + ":"))),
+				articles: state.articles.map(article => article.id === articleId ? { ...article, summary: json.data.summary || article.summary } : article),
+			}));
+			return json.data;
+		} catch {
+			if (requestId === extractionRequestId) set({ extractionError: "未能提取全文。可重试，或仅翻译摘要。" });
+			return null;
 		} finally {
-			set({ isExtracting: false });
+			if (requestId === extractionRequestId) set({ isExtracting: false });
 		}
 	},
 
@@ -471,7 +478,7 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 				credentials: "include",
 			});
 			const json = await res.json() as { success: boolean; data: { annotations: Annotation[] } };
-			if (json.success) {
+			if (json.success && get().selectedArticleId === articleId) {
 				set({ annotations: json.data.annotations });
 			}
 		} catch (error) {
