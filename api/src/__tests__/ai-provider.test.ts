@@ -55,3 +55,35 @@ it("renders partial bilingual output and bounds long text into resumable runs", 
   expect(partial.translatedHtml).toContain('<img src="https://example.com/image.png">');
   expect(partial.translatedHtml).toContain("<pre>code</pre>");
 });
+
+it("classifies interrupted response bodies as retryable network errors", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockImplementation(async () => new Response(new ReadableStream({
+    start(controller) { controller.error(new Error("connection reset")); },
+  }), { status: 200 })));
+  const { isTemporaryAiError } = await import("../lib/ai-progress");
+  const error = await requestAiTranslation({ kind: "openai-compatible", model: "test" }, "https://provider.example/v1/chat/completions", "test-key", "Hello", "zh-CN", "", new AbortController().signal).catch(error => error);
+  expect(error.code).toBe("provider_network");
+  expect(isTemporaryAiError(error)).toBe(true);
+});
+
+it("retries interrupted bodies twice while other segments continue", async () => {
+  const { readAiRunState, translateAiBatch } = await import("../lib/ai-progress");
+  const state = readAiRunState("[]");
+  let brokenCalls = 0;
+  vi.stubGlobal("fetch", vi.fn().mockImplementation(async (_url, init) => {
+    const passage = JSON.parse(JSON.parse(init.body).messages[1].content).passage;
+    if (passage === "broken") {
+      brokenCalls++;
+      return new Response(new ReadableStream({ start(controller) { controller.error(new Error("connection reset")); } }));
+    }
+    return Response.json({ choices: [{ finish_reason: "stop", message: { content: "完成" } }] });
+  }));
+  await translateAiBatch(state, [0, 1], async index => {
+    const result = await requestAiTranslation({ kind: "openai-compatible", model: "test" }, "https://provider.example", "key", index ? "other" : "broken", "zh-CN", "", new AbortController().signal);
+    return { html: result.translated, text: result.translated, detectedLang: "auto" };
+  }, async () => {}, new AbortController().signal, 2, async () => {});
+  expect(brokenCalls).toBe(3);
+  expect(state.failed).toEqual([0]);
+  expect(state.runs[1]?.text).toBe("完成");
+  expect(state.halted).toBeUndefined();
+});

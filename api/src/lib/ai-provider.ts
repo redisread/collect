@@ -81,7 +81,7 @@ export async function requestAiTranslation(
   if (!response.ok) {
     // Some OpenAI-compatible providers report exhausted credit as HTTP 429.
     let errorText = "";
-    const errorReader = response.body?.getReader();
+    const errorReader = response.status === 429 ? response.body?.getReader() : undefined;
     if (errorReader) {
       try {
         while (errorText.length < 8192) {
@@ -89,8 +89,11 @@ export async function requestAiTranslation(
           if (chunk.done) break;
           errorText += new TextDecoder().decode(chunk.value.subarray(0, 8192 - errorText.length));
         }
-      } finally { await errorReader.cancel(); }
+      } catch {
+        throw new TranslationError("provider_network", "AI 响应传输中断，请稍后重试");
+      } finally { await errorReader.cancel().catch(() => {}); }
     }
+    if (!errorReader) await response.body?.cancel().catch(() => {});
     if (/insufficient_quota|billing_hard_limit_reached|insufficient_balance/i.test(errorText)) {
       throw new TranslationError("provider_quota", "AI 服务余额或额度不足，请在服务商账户中处理后继续", 402);
     }
@@ -113,7 +116,10 @@ export async function requestAiTranslation(
       if (size > 128_000) throw new TranslationError("provider_size", "AI 返回内容过长，请更换模型后重试");
       chunks.push(value);
     }
-  } finally { await reader.cancel(); }
+  } catch (error) {
+    if (error instanceof TranslationError) throw error;
+    throw new TranslationError("provider_network", "AI 响应传输中断，已完成段落已保存，可继续翻译");
+  } finally { await reader.cancel().catch(() => {}); }
   const bytes = new Uint8Array(size);
   let offset = 0;
   for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
