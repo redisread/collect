@@ -1,3 +1,4 @@
+import { ThemeController } from "./common/ThemeToggle";
 import { useEffect, useState } from "react";
 import { authClient } from "@/lib/auth-client";
 import { ThreeColumnLayout } from "./layout/ThreeColumnLayout";
@@ -65,6 +66,7 @@ export default function App({ initialPage = "reader" }: { initialPage?: "reader"
 
   return (
     <>
+      <ThemeController />
       {page === "reader" && <KeyboardShortcuts />}
       {readerVisited && <div hidden={page !== "reader"} inert={page !== "reader"}>
         <ThreeColumnLayout />

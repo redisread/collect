@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
+import { useLayoutEffect, useRef } from "react";
 import { cn } from "@/lib/utils/cn";
 
 export interface ContextMenuItem {
@@ -17,61 +18,44 @@ interface ContextMenuProps {
 }
 
 export function ContextMenu({ items, x, y, onClose }: ContextMenuProps) {
-	const menuRef = useRef<HTMLDivElement>(null);
-
-	useEffect(() => {
-		const handleClickOutside = (e: MouseEvent) => {
-			if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-				onClose();
-			}
-		};
-		const handleEsc = (e: KeyboardEvent) => {
-			if (e.key === "Escape") onClose();
-		};
-
-		document.addEventListener("mousedown", handleClickOutside);
-		document.addEventListener("keydown", handleEsc);
-		return () => {
-			document.removeEventListener("mousedown", handleClickOutside);
-			document.removeEventListener("keydown", handleEsc);
-		};
-	}, [onClose]);
-
-	// 确保菜单不超出视口
-	const adjustedX = Math.min(x, window.innerWidth - 180);
-	const adjustedY = Math.min(y, window.innerHeight - items.length * 36 - 16);
-
-	return (
-		<div
-			ref={menuRef}
-			className="fixed z-50 min-w-[160px] rounded-lg shadow-[var(--shadow-md)] bg-[var(--bg-main)] border border-[var(--border)] py-1 animate-fade-in"
-			style={{ left: adjustedX, top: adjustedY }}
-		>
-			{items.map((item, i) => (
-				<button
-					key={i}
-					disabled={item.disabled}
-					onClick={() => {
-						if (!item.disabled) {
-							item.onClick();
-							onClose();
-						}
-					}}
-					className={cn(
-						"w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors",
-						"hover:bg-[var(--bg-card-hover)]",
-						item.variant === "danger"
-							? "text-red-500 hover:text-red-600"
-							: "text-[var(--text-primary)]",
-						item.disabled && "opacity-40 cursor-not-allowed"
-					)}
-				>
-					{item.icon && <span className="text-base">{item.icon}</span>}
-					{item.label}
-				</button>
-			))}
-		</div>
-	);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useLayoutEffect(() => {
+    const menu = menuRef.current!;
+    const previousFocus = document.activeElement;
+    menu.showPopover();
+    const rect = menu.getBoundingClientRect();
+    menu.style.left = Math.max(8, Math.min(x, innerWidth - rect.width - 8)) + "px";
+    menu.style.top = Math.max(8, Math.min(y, innerHeight - rect.height - 8)) + "px";
+    menu.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
+    const closeOnResize = () => closeRef.current();
+    window.addEventListener("resize", closeOnResize);
+    return () => {
+      window.removeEventListener("resize", closeOnResize);
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
+    };
+  }, [x, y]);
+  return createPortal(<div ref={menuRef} popover="auto" role="menu" aria-label="操作菜单"
+    onToggle={event => { if (event.newState === "closed") closeRef.current(); }}
+    onKeyDown={event => {
+      const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
+      const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        buttons[(index + (event.key === "ArrowDown" ? 1 : buttons.length - 1)) % buttons.length]?.focus();
+      }
+      if (event.key === "Home") { event.preventDefault(); buttons[0]?.focus(); }
+      if (event.key === "End") { event.preventDefault(); buttons.at(-1)?.focus(); }
+      if (event.key === "Escape" || event.key === "Tab") onClose();
+    }}
+    className="fixed inset-auto m-0 min-w-40 max-w-[calc(100vw-16px)] max-h-[calc(100dvh-16px)] overflow-y-auto overscroll-contain rounded-xl border border-[var(--border)] bg-[var(--bg-main)] p-1.5 text-[var(--text-primary)] shadow-[var(--shadow-md)] animate-fade-in">
+    {items.map((item, i) => <button key={i} role="menuitem" disabled={item.disabled}
+      onClick={() => { item.onClick(); onClose(); }}
+      className={cn("flex min-h-11 w-full items-center gap-2 rounded-lg px-3 text-start text-sm transition-colors duration-150 hover:bg-[var(--bg-card-hover)] disabled:opacity-40", item.variant === "danger" && "text-red-500")}>
+      {item.icon && <span aria-hidden="true">{item.icon}</span>}{item.label}
+    </button>)}
+  </div>, document.body);
 }
 
 // 右键菜单 Hook

@@ -92,7 +92,10 @@ articlesRoute.get("/", async (c) => {
 
     if (filter === "starred") conditions.push(eq(articles.isStarred, true));
     if (filter === "read_later") conditions.push(eq(articles.isReadLater, true));
-    if (filter === "unread") conditions.push(eq(articles.isRead, false));
+    if (filter === "unread" || c.req.query("hideRead") === "true") {
+      const includeId = c.req.query("includeId");
+      conditions.push(includeId ? or(eq(articles.isRead, false), eq(articles.id, includeId))! : eq(articles.isRead, false));
+    }
 
     const where = and(...conditions);
     const orderBy = sortOrder === "asc" ? asc(articles.publishedAt) : desc(articles.publishedAt);
@@ -552,7 +555,10 @@ articlesRoute.get("/search", async (c) => {
       ),
     ];
 
-    if (filter === "unread") conditions.push(eq(articles.isRead, false));
+    if (filter === "unread" || c.req.query("hideRead") === "true") {
+      const includeId = c.req.query("includeId");
+      conditions.push(includeId ? or(eq(articles.isRead, false), eq(articles.id, includeId))! : eq(articles.isRead, false));
+    }
     if (filter === "starred") conditions.push(eq(articles.isStarred, true));
     if (filter === "read_later") conditions.push(eq(articles.isReadLater, true));
 

@@ -1,3 +1,5 @@
+import { useUiStore } from "./uiStore";
+import { useFeedStore } from "./feedStore";
 import { create } from "zustand";
 import { readTranslationLanguage } from "../settings";
 import { useAiSettingsStore, type AiProfile } from "./aiSettingsStore";
@@ -37,6 +39,9 @@ export const SUPPORTED_LANGUAGES = [
 ] as const;
 
 interface ArticleStore {
+  articleActionError: string | null;
+  pendingArticleIds: string[];
+  updateArticleState: (id: string, change: Partial<Pick<Article, "isRead" | "isStarred" | "isReadLater">>) => Promise<void>;
 	articles: ArticleListItem[];
 	selectedArticleId: string | null;
 	selectedArticle: Article | null;
@@ -55,6 +60,7 @@ interface ArticleStore {
 	// 翻译相关状态
 	translations: Record<string, TranslationResult>;
 	isTranslating: boolean;
+	isPausingTranslation: boolean;
 	/** 当前选中的目标语言 */
 	targetLanguage: string;
 	displayedLanguages: Record<string, string>;
@@ -117,7 +123,7 @@ let preferenceRequestId = 0;
 let preferenceRequest: Promise<string> | null = null;
 let aiTranslationController: AbortController | null = null;
 
-function buildArticleUrl(source: SelectedSource, page: number, sortOrder: string): string {
+function buildArticleUrl(source: SelectedSource, page: number, sortOrder: string, includeId?: string | null): string {
 	const params = new URLSearchParams({
 		page: String(page),
 		pageSize: String(PAGE_SIZE),
@@ -129,10 +135,46 @@ function buildArticleUrl(source: SelectedSource, page: number, sortOrder: string
 	else if (source.type === "starred") params.set("filter", "starred");
 	else if (source.type === "read_later") params.set("filter", "read_later");
 
-	return `${API_BASE}/api/articles?${params.toString()}`;
+	if (useUiStore.getState().hideRead) {
+    params.set("hideRead", "true");
+    if (includeId) params.set("includeId", includeId);
+  }
+  return `${API_BASE}/api/articles?${params.toString()}`;
 }
 
 export const useArticleStore = create<ArticleStore>((set, get) => ({
+  articleActionError: null,
+  pendingArticleIds: [],
+  updateArticleState: async (id, change) => {
+    if (get().pendingArticleIds.includes(id)) return;
+    if (get().selectedArticleId === id && get().isLoadingDetail) {
+      set({ articleActionError: "文章正在加载，请加载完成后操作" });
+      return;
+    }
+    set(state => ({ pendingArticleIds: [...state.pendingArticleIds, id], articleActionError: null }));
+    try {
+      const response = await fetch(`/api/articles/${id}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" }, credentials: "include",
+        body: JSON.stringify(change), signal: AbortSignal.timeout(15_000),
+      });
+      const body = await response.json() as { success: boolean };
+      if (!response.ok || !body.success) throw new Error("状态保存失败，请重试");
+      set(state => ({
+        articles: state.articles.map(article => article.id === id ? { ...article, ...change } : article),
+        selectedArticle: state.selectedArticle?.id === id ? { ...state.selectedArticle, ...change } : state.selectedArticle,
+      }));
+      const refreshed = await Promise.allSettled([
+        useFeedStore.getState().fetchFeeds(), get().fetchArticles(useFeedStore.getState().selectedSource, false),
+      ]);
+      if (refreshed.some(result => result.status === "rejected" || result.value === false)) {
+        set({ articleActionError: "状态已保存，列表同步失败，请刷新页面" });
+      }
+    } catch {
+      set({ articleActionError: "状态保存失败，请检查网络后重试" });
+    } finally {
+      set(state => ({ pendingArticleIds: state.pendingArticleIds.filter(value => value !== id) }));
+    }
+  },
 	articles: [],
 	selectedArticleId: null,
 	selectedArticle: null,
@@ -152,6 +194,7 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 	// 翻译相关状态
 	translations: {},
 	isTranslating: false,
+	isPausingTranslation: false,
 	targetLanguage: "zh-CN",
 	displayedLanguages: {},
 	displayedKeys: {},
@@ -181,7 +224,7 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 	},
 	pauseTranslation: () => {
 		aiTranslationController?.abort();
-		set({ isTranslating: false });
+		set({ isPausingTranslation: get().isTranslating });
 	},
 	restoreAiTranslation: async () => {
 		const { selectedArticle } = get();
@@ -200,7 +243,8 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 				get().selectedArticleId !== selectedArticle.id || get().isTranslating ||
 				useAiSettingsStore.getState().activeProfileId !== profile.id) return;
 			const key = aiCacheKey(selectedArticle.id, lang, profile);
-			set(state => ({ aiProgress: progress, translationMode: "ai",
+			set(state => ({ aiProgress: progress,
+          translationError: progress.halted ?? (progress.pending === 0 && progress.failed ? `${progress.failed} 段翻译失败，可重试失败段落` : null), translationMode: "ai",
 				displayedLanguages: { ...state.displayedLanguages, [selectedArticle.id]: lang },
 				displayedKeys: { ...state.displayedKeys, [selectedArticle.id]: key },
 				translations: { ...state.translations, [key]: { ...progress, original: content, translated: progress.segments?.map(segment => segment.translated).join("\n\n") ?? "" } },
@@ -220,22 +264,32 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 		const requestId = ++articleListRequestId;
 		set({ isLoading: true });
 		try {
-			const url = buildArticleUrl(source, 1, get().sortOrder);
-			const res = await fetch(url, { credentials: "include", signal: AbortSignal.timeout(15_000) });
-			const json = await res.json() as {
-				success: boolean;
-				data: { articles: ArticleListItem[]; total: number; page: number; pageSize: number };
-			};
-			if (!res.ok || !json.success) return false;
-			if (requestId === articleListRequestId) {
-				set({
-					articles: json.data.articles,
-					total: json.data.total,
-					page: 1,
-					hasMore: json.data.articles.length < json.data.total,
-					...(reset ? { selectedArticleId: null, selectedArticle: null } : {}),
-				});
-			}
+      const pageCount = reset ? 1 : Math.max(1, get().page);
+      const selectedId = reset ? null : get().selectedArticleId;
+      const current = get().articles.find(article => article.id === selectedId) ?? get().selectedArticle;
+      const pages = await Promise.all(Array.from({ length: pageCount }, async (_, index) => {
+        const url = buildArticleUrl(source, index + 1, get().sortOrder, selectedId);
+        const res = await fetch(url, { credentials: "include", signal: AbortSignal.timeout(15_000) });
+        const json = await res.json() as { success: boolean; data: { articles: ArticleListItem[]; total: number } };
+        if (!res.ok || !json.success) throw new Error("列表刷新失败");
+        return json.data;
+      }));
+      if (requestId === articleListRequestId) {
+        const refreshed = Array.from(new Map(pages.flatMap(page => page.articles).map(article => [article.id, article])).values());
+        const matchesSource = current &&
+          (source.type !== "starred" || current.isStarred) &&
+          (source.type !== "read_later" || current.isReadLater) &&
+          (source.type !== "feed" || current.feedId === source.feedId) &&
+          (source.type !== "folder" || useFeedStore.getState().feeds.find(feed => feed.id === current.feedId)?.folderId === source.folderId);
+        if (selectedId && useUiStore.getState().hideRead && matchesSource && !refreshed.some(article => article.id === selectedId)) {
+          refreshed.push(current);
+        }
+        set({
+          articles: refreshed, total: pages[0].total, page: pageCount,
+          hasMore: pageCount * PAGE_SIZE < pages[0].total,
+          ...(reset ? { selectedArticleId: null, selectedArticle: null } : {}),
+        });
+      }
 			return true;
 		} catch {
 			return false;
@@ -245,14 +299,14 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 	},
 
 	fetchMoreArticles: async (source) => {
-		const { page, articles, total, isLoading } = get();
-		if (isLoading || articles.length >= total) return;
+		const { page, hasMore, isLoading } = get();
+		if (isLoading || !hasMore) return;
 
 		const requestId = ++articleListRequestId;
 		set({ isLoading: true });
 		try {
 			const nextPage = page + 1;
-			const url = buildArticleUrl(source, nextPage, get().sortOrder);
+			const url = buildArticleUrl(source, nextPage, get().sortOrder, get().selectedArticleId);
 			const res = await fetch(url, { credentials: "include" });
 			const json = await res.json() as {
 				success: boolean;
@@ -260,9 +314,10 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 			};
 			if (requestId === articleListRequestId && json.success) {
 				set((state) => ({
-					articles: [...state.articles, ...json.data.articles],
+					articles: Array.from(new Map([...state.articles, ...json.data.articles].map(article => [article.id, article])).values()),
 					page: nextPage,
-					hasMore: state.articles.length + json.data.articles.length < json.data.total,
+					hasMore: nextPage * PAGE_SIZE < json.data.total,
+          total: json.data.total,
 				}));
 			}
 		} finally {
@@ -278,7 +333,7 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 		++extractionRequestId;
 		set({ selectedArticleId: articleId, selectedArticle: null, isLoadingDetail: !!articleId,
 			detailError: null, translationError: null, translationFallback: null, extractionError: null,
-			isTranslating: false, aiProgress: null, isExtracting: false, annotations: [] });
+			isTranslating: false, isPausingTranslation: false, aiProgress: null, isExtracting: false, annotations: [] });
 		if (!articleId) return;
 		try {
 			const res = await fetch(`${API_BASE}/api/articles/${articleId}`, {
@@ -290,6 +345,7 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 				set(state => ({ selectedArticle: json.data,
 					articles: state.articles.map(article => article.id === articleId ? { ...article, isRead: true } : article) }));
 				void get().restoreAiTranslation();
+				void useFeedStore.getState().fetchFeeds().catch(() => set({ articleActionError: "文章已打开，订阅数量同步失败，请刷新页面" }));
 			}
 		} catch {
 			if (requestId === detailRequestId && get().selectedArticleId === articleId) set({ detailError: "文章加载失败，请重试" });
@@ -298,66 +354,21 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 		}
 	},
 
-	markRead: async (articleId, isRead) => {
-		set((state) => ({
-			articles: state.articles.map((a) => (a.id === articleId ? { ...a, isRead } : a)),
-			selectedArticle:
-				state.selectedArticle?.id === articleId
-					? { ...state.selectedArticle, isRead }
-					: state.selectedArticle,
-		}));
-		await fetch(`${API_BASE}/api/articles/${articleId}`, {
-			method: "PUT",
-			headers: { "Content-Type": "application/json" },
-			credentials: "include",
-			body: JSON.stringify({ isRead }),
-		});
-	},
-
-	toggleStarred: async (articleId) => {
-		const article = get().articles.find((a) => a.id === articleId);
-		const newValue = !article?.isStarred;
-		set((state) => ({
-			articles: state.articles.map((a) =>
-				a.id === articleId ? { ...a, isStarred: newValue } : a
-			),
-			selectedArticle:
-				state.selectedArticle?.id === articleId
-					? { ...state.selectedArticle, isStarred: newValue }
-					: state.selectedArticle,
-		}));
-		await fetch(`${API_BASE}/api/articles/${articleId}`, {
-			method: "PUT",
-			headers: { "Content-Type": "application/json" },
-			credentials: "include",
-			body: JSON.stringify({ isStarred: newValue }),
-		});
-	},
-
-	toggleReadLater: async (articleId) => {
-		const article = get().articles.find((a) => a.id === articleId);
-		const newValue = !article?.isReadLater;
-		set((state) => ({
-			articles: state.articles.map((a) =>
-				a.id === articleId ? { ...a, isReadLater: newValue } : a
-			),
-			selectedArticle:
-				state.selectedArticle?.id === articleId
-					? { ...state.selectedArticle, isReadLater: newValue }
-					: state.selectedArticle,
-		}));
-		await fetch(`${API_BASE}/api/articles/${articleId}`, {
-			method: "PUT",
-			headers: { "Content-Type": "application/json" },
-			credentials: "include",
-			body: JSON.stringify({ isReadLater: newValue }),
-		});
-	},
+	markRead: (id, isRead) => get().updateArticleState(id, { isRead }),
+	toggleStarred: id => {
+    const article = get().articles.find(item => item.id === id) ?? (get().selectedArticle?.id === id ? get().selectedArticle : null);
+    return get().updateArticleState(id, { isStarred: !article?.isStarred });
+  },
+	toggleReadLater: id => {
+    const article = get().articles.find(item => item.id === id) ?? (get().selectedArticle?.id === id ? get().selectedArticle : null);
+    return get().updateArticleState(id, { isReadLater: !article?.isReadLater });
+  },
 
 	setSortOrder: (sortOrder) => set({ sortOrder }),
 
 	navigateArticle: async (direction) => {
-		const { articles, selectedArticleId } = get();
+		const { selectedArticleId } = get();
+		const articles = get().articles.filter(article => !useUiStore.getState().hideRead || !article.isRead || article.id === selectedArticleId);
 		if (articles.length === 0) return;
 
 		const currentIndex = articles.findIndex((a) => a.id === selectedArticleId);
@@ -409,9 +420,9 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 			const key = aiCacheKey(articleId, lang, profile);
 			let shown = false;
 			const applyProgress = (progress: AiProgress) => {
-				if (requestId !== translationRequestId || detailId !== detailRequestId || get().selectedArticleId !== articleId) controller.abort();
-				if (controller.signal.aborted) return;
+				if (requestId !== translationRequestId || detailId !== detailRequestId || get().selectedArticleId !== articleId) { controller.abort(); return; }
 				set(state => ({ aiProgress: progress,
+          translationError: progress.halted ?? (progress.pending === 0 && progress.failed ? `${progress.failed} 段翻译失败，可重试失败段落` : null),
 					translationViewRequest: state.translationViewRequest + (!shown && progress.completed > 0 ? 1 : 0),
 					displayedLanguages: { ...state.displayedLanguages, [articleId]: lang },
 					displayedKeys: { ...state.displayedKeys, [articleId]: key },
@@ -420,7 +431,9 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 				}));
 				shown ||= progress.completed > 0;
 			};
-			set({ isTranslating: true, aiProgress: null, translationError: null, translationFallback: null, translationMode: "ai" });
+			const pauseWhenHidden = () => { if (document.visibilityState === "hidden") get().pauseTranslation(); };
+      document.addEventListener("visibilitychange", pauseWhenHidden);
+      set({ isTranslating: true, isPausingTranslation: false, aiProgress: null, translationError: null, translationFallback: null, translationMode: "ai" });
 			try {
 				const progress = await loadAiProgress(articleId, content, lang, profile, false);
 				if (!progress || controller.signal.aborted || detailId !== detailRequestId) return false;
@@ -430,7 +443,8 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 				if (requestId === translationRequestId && !controller.signal.aborted) set({ translationError: error instanceof Error ? error.message : "AI 翻译失败，请继续重试" });
 				return false;
 			} finally {
-				if (requestId === translationRequestId) set({ isTranslating: false });
+				document.removeEventListener("visibilitychange", pauseWhenHidden);
+        if (requestId === translationRequestId) set({ isTranslating: false, isPausingTranslation: false });
 			}
 		}
 		const key = `${articleId}:${lang}`;
@@ -445,7 +459,7 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 			return true;
 		}
 		const requestId = ++translationRequestId;
-		set({ isTranslating: true, aiProgress: null, translationError: null, translationFallback: null, translationMode: "server" });
+		set({ isTranslating: true, isPausingTranslation: false, aiProgress: null, translationError: null, translationFallback: null, translationMode: "server" });
 		try {
 			const res = await fetch(`${API_BASE}/api/translate`, {
 				method: "POST", headers: { "Content-Type": "application/json" },

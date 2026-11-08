@@ -30,7 +30,7 @@ Collect 原先分别部署 API Worker 和 Web Worker，浏览器通过公开 API
 
 ## 发布与切换
 
-GitHub Actions 对 PR 和 `main` 运行类型检查、API/Web 测试、Astro build 与 `wrangler deploy --dry-run`。按 2026-11-07 用户要求，生产发布由 Cloudflare Workers Builds 监听 `redisread/folio` 的 `main` 分支完成。构建根目录为 `frontend`，命令分别为 `pnpm build` 和 `pnpm exec wrangler deploy`，Node 24、pnpm 11.24.0。合并前确认 GitHub checks 通过，Cloudflare 在 main push 后独立执行部署。
+GitHub Actions 对 PR 和 `main` 运行类型检查、API/Web 测试、Astro build 与 `wrangler deploy --dry-run`。按 2026-11-07 用户要求，生产发布由 Cloudflare Workers Builds 监听 `redisread/collect` 的 `main` 分支完成。构建根目录为 `frontend`，命令分别为 `pnpm build` 和 `pnpm exec wrangler deploy`，Node 24、pnpm 11.24.0。合并前确认 GitHub checks 通过，Cloudflare 在 main push 后独立执行部署。
 
 首次切换已于 2026-08-30 完成：创建主 Queue 与 DLQ，为 Worker `collect` 设置 `BETTER_AUTH_SECRET`、仅限 `gomate.live` 发信的 `RESEND_API_KEY`，并发布到 `https://collect.wujiahong2013.workers.dev`。后续可单独切换自定义域名。现有 D1、KV 与 R2 资源复用，未执行 schema migration。
 

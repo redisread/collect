@@ -79,9 +79,27 @@ export async function requestAiTranslation(
     throw new TranslationError("provider_network", signal.aborted ? "AI 响应超时，已完成段落已保存，可继续翻译" : "无法连接 AI 服务，请检查地址后重试");
   }
   if (!response.ok) {
-    await response.body?.cancel();
+    // Some OpenAI-compatible providers report exhausted credit as HTTP 429.
+    let errorText = "";
+    const errorReader = response.status === 429 ? response.body?.getReader() : undefined;
+    if (errorReader) {
+      try {
+        while (errorText.length < 8192) {
+          const chunk = await errorReader.read();
+          if (chunk.done) break;
+          errorText += new TextDecoder().decode(chunk.value.subarray(0, 8192 - errorText.length));
+        }
+      } catch {
+        throw new TranslationError("provider_network", "AI 响应传输中断，请稍后重试");
+      } finally { await errorReader.cancel().catch(() => {}); }
+    }
+    if (!errorReader) await response.body?.cancel().catch(() => {});
+    if (/insufficient_quota|billing_hard_limit_reached|insufficient_balance/i.test(errorText)) {
+      throw new TranslationError("provider_quota", "AI 服务余额或额度不足，请在服务商账户中处理后继续", 402);
+    }
     const message = response.status === 401 || response.status === 403 ? "AI 密钥无效或没有调用权限，请在个人设置中检查" :
-      response.status === 429 ? "AI 服务额度不足或请求过于频繁，请稍后继续" :
+      response.status === 402 ? "AI 服务余额不足，请充值后继续" :
+      response.status === 429 ? "AI 服务请求过于频繁，正在降低并发" :
       response.status >= 300 && response.status < 400 ? "AI 地址发生重定向，请填写最终 API 地址" : "AI 服务返回错误，请检查模型与服务状态";
     throw new TranslationError("provider_http", message, response.status);
   }
@@ -98,7 +116,10 @@ export async function requestAiTranslation(
       if (size > 128_000) throw new TranslationError("provider_size", "AI 返回内容过长，请更换模型后重试");
       chunks.push(value);
     }
-  } finally { await reader.cancel(); }
+  } catch (error) {
+    if (error instanceof TranslationError) throw error;
+    throw new TranslationError("provider_network", "AI 响应传输中断，已完成段落已保存，可继续翻译");
+  } finally { await reader.cancel().catch(() => {}); }
   const bytes = new Uint8Array(size);
   let offset = 0;
   for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }

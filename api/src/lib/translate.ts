@@ -176,14 +176,14 @@ export function createTranslationPlan(html: string, target: string, maxRunChars 
 export type TranslationPlan = ReturnType<typeof createTranslationPlan>;
 export interface TranslatedRun { html: string; text: string; detectedLang: string }
 
-export function renderTranslationPlan(plan: TranslationPlan, results: TranslatedRun[]) {
+export function renderTranslationPlan(plan: TranslationPlan, results: (TranslatedRun | null)[]) {
   const { jobs, marker, template } = plan;
   const pattern = new RegExp("<!--" + marker + "-(\\d+)-->", "g");
   return {
-    segments: jobs.slice(0, results.length).map((source, i) => ({ original: load(source, {}, false).text(), translated: results[i].text })),
+    segments: jobs.flatMap((source, i) => results[i] ? [{ original: load(source, {}, false).text(), translated: results[i]!.text }] : []),
     translatedHtml: template.translated.replace(pattern, (_, i) => results[Number(i)]?.html ?? jobs[Number(i)]),
     bilingualHtml: template.bilingual.replace(pattern, (_, i) => results[Number(i)]?.html ?? ""),
-    detectedLang: results.find(result => result.detectedLang !== "auto")?.detectedLang ?? "auto",
+    detectedLang: results.find(result => result && result.detectedLang !== "auto")?.detectedLang ?? "auto",
   };
 }
 

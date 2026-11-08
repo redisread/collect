@@ -21,11 +21,13 @@ export function PwaInstallButton() {
 
 export function PwaUpdateNotice() {
   const { updateWorker, updating } = usePwaStore();
+  const [dismissedWorker, setDismissedWorker] = useState<ServiceWorker | null>(null);
   useEffect(() => { void initializePwa(); }, []);
-  if (!updateWorker) return null;
-  return <div role="status" className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] right-4 z-50 flex max-w-[calc(100vw-2rem)] items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg-main)] p-3 text-sm text-[var(--text-primary)] shadow-[var(--shadow-md)]">
+  if (!updateWorker || dismissedWorker === updateWorker) return null;
+  return <div role="status" className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] lg:bottom-[calc(1rem+env(safe-area-inset-bottom))] right-4 z-50 flex max-w-[calc(100vw-2rem)] items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg-main)] p-3 text-sm text-[var(--text-primary)] shadow-[var(--shadow-md)]">
     <span>Collect 有新版本</span>
     <button disabled={updating} className="min-h-10 rounded-lg bg-[var(--accent-light)] px-3 text-[var(--accent)]"
       onClick={applyPwaUpdate}>{updating ? "更新中…" : "更新并刷新"}</button>
+    <button aria-label="稍后更新" disabled={updating} onClick={() => setDismissedWorker(updateWorker)} className="flex min-h-11 min-w-11 items-center justify-center rounded-lg hover:bg-[var(--bg-card-hover)]">×</button>
   </div>;
 }

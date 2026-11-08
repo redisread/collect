@@ -57,7 +57,7 @@ pnpm deploy:dry-run
 pnpm deploy
 ```
 
-GitHub [Check and Test 工作流](.github/workflows/cloudflare.yml) 执行类型检查、测试、构建和部署包校验。Cloudflare Workers Builds 监听 `redisread/folio` 的 `main` 分支，合并后自动构建并部署。
+GitHub [Check and Test 工作流](.github/workflows/cloudflare.yml) 执行类型检查、测试、构建和部署包校验。Cloudflare Workers Builds 监听 `redisread/collect` 的 `main` 分支，合并后自动构建并部署。
 
 Workers Builds 使用根目录 `frontend`、构建命令 `pnpm build`、部署命令 `pnpm exec wrangler deploy`，构建环境设置 `NODE_VERSION=24` 与 `PNPM_VERSION=11.24.0`。合并前等待 GitHub checks 通过。
 
