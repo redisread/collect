@@ -11,6 +11,7 @@ final class LibraryStore {
   var articles: [ArticleDTO] = []
   var feeds: [FeedDTO] = []
   var folders: [FolderDTO] = []
+  var activeFeeds: [FeedDTO] { feeds.filter { $0.unsubscribedAt == nil } }
   var status = ""
   var error: String?
   var conflicts: [String] = []
@@ -527,6 +528,7 @@ final class LibraryStore {
     catalogGeneration += 1
     feeds.removeAll { $0.id == feed.id }
     feeds.append(feed)
+    feeds.sort { ($0.sortOrder ?? 0, $0.id) < ($1.sortOrder ?? 0, $1.id) }
     let value = try catalog(owner) ?? makeCatalog(owner)
     value.feeds = try JSONEncoder().encode(feeds)
     try context.save()
@@ -542,7 +544,76 @@ final class LibraryStore {
     try reloadLocal()
   }
 
+  func moveSubscriptions(_ ids: [String], to folderID: String?) async throws {
+    guard let saved = session else { return }
+    let body = try JSONSerialization.data(withJSONObject: [
+      "ids": ids, "folderId": folderID as Any? ?? NSNull(),
+    ])
+    let response: SubscriptionBatchResponse = try await api.request(
+      "/api/feeds/batch/move", method: "POST", token: saved.token, body: body)
+    guard session?.token == saved.token else { return }
+    try applySubscriptions(response, unsubscribed: [])
+  }
+
+  func unsubscribe(_ ids: [String]) async throws {
+    guard let saved = session else { return }
+    await uploadPending()
+    guard session?.token == saved.token else { return }
+    guard try pending(saved.account.id).isEmpty else {
+      throw APIError(status: 0, message: "请先联网同步离线修改，再取消订阅，以保留收藏和稍后阅读")
+    }
+    let response: SubscriptionBatchResponse = try await api.request(
+      "/api/feeds/batch/unsubscribe", method: "POST", token: saved.token,
+      body: JSONEncoder().encode(["ids": ids]))
+    guard session?.token == saved.token else { return }
+    try applySubscriptions(response, unsubscribed: Set(ids))
+  }
+
+  private func applySubscriptions(_ response: SubscriptionBatchResponse, unsubscribed: Set<String>)
+    throws
+  {
+    guard let owner = session?.account.id else { return }
+    catalogGeneration += 1
+    for feed in response.feeds {
+      feeds.removeAll { $0.id == feed.id }
+      feeds.append(feed)
+    }
+    feeds.sort { ($0.sortOrder ?? 0, $0.id) < ($1.sortOrder ?? 0, $1.id) }
+    let retained = Set((response.articles ?? []).map(\.id))
+    for record in records.values {
+      if unsubscribed.contains(try record.decode().feedId), !retained.contains(record.articleID) {
+        context.delete(record)
+      }
+    }
+    for article in response.articles ?? [] { try mergeArticle(article, owner: owner) }
+    let value = try catalog(owner) ?? makeCatalog(owner)
+    value.feeds = try JSONEncoder().encode(feeds)
+    try context.save()
+    try reloadLocal()
+  }
+
+  func reorderFolders(_ ids: [String]) async throws {
+    guard let saved = session else { return }
+    let result: FolderOrderResponse = try await api.request(
+      "/api/folders/reorder", method: "POST", token: saved.token,
+      body: JSONEncoder().encode(["ids": ids]))
+    guard session?.token == saved.token else { return }
+    catalogGeneration += 1
+    let changes = Dictionary(uniqueKeysWithValues: result.folders.map { ($0.id, $0) })
+    folders = folders.map { changes[$0.id] ?? $0 }.sorted {
+      ($0.sortOrder ?? 0, $0.id) < ($1.sortOrder ?? 0, $1.id)
+    }
+    let value = try catalog(saved.account.id) ?? makeCatalog(saved.account.id)
+    value.folders = try JSONEncoder().encode(folders)
+    try context.save()
+    try reloadLocal()
+  }
+
   func command(_ path: String, method: String, fields: [String: String] = [:]) async throws {
+    if method == "DELETE", path.hasPrefix("/api/feeds/") {
+      try await unsubscribe([String(path.split(separator: "/").last!)])
+      return
+    }
     guard let saved = session else { return }
     let (data, status) = try await api.raw(
       path, method: method, token: saved.token, body: JSONEncoder().encode(fields))
@@ -554,12 +625,7 @@ final class LibraryStore {
     catalogGeneration += 1
     let id = path.split(separator: "/").last.map(String.init) ?? ""
     if path.hasPrefix("/api/feeds") {
-      if method == "DELETE" {
-        feeds.removeAll { $0.id == id }
-        for record in records.values where (try? record.decode().feedId) == id {
-          context.delete(record)
-        }
-      } else {
+      do {
         let result = try JSONDecoder().decode(APIEnvelope<FeedDTO>.self, from: data)
         if let feed = result.data {
           try applyFeed(feed)
@@ -593,6 +659,8 @@ final class LibraryStore {
         }
       }
     }
+    feeds.sort { ($0.sortOrder ?? 0, $0.id) < ($1.sortOrder ?? 0, $1.id) }
+    folders.sort { ($0.sortOrder ?? 0, $0.id) < ($1.sortOrder ?? 0, $1.id) }
     let value = try catalog(saved.account.id) ?? makeCatalog(saved.account.id)
     value.feeds = try JSONEncoder().encode(feeds)
     value.folders = try JSONEncoder().encode(folders)

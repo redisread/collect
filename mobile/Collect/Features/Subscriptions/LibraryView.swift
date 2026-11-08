@@ -23,23 +23,30 @@ struct LibraryView: View {
             "稍后阅读", icon: "bookmark", scope: .later,
             count: store.articles.filter { $0.isReadLater == true }.count)
         }
-        Section("订阅") {
+        Section {
           ForEach(store.folders) { folder in
             folderRow(folder.name, folderID: folder.id, scope: .folder(folder.id))
               .contextMenu {
                 Button("管理文件夹") { managedFolderID = folder.id }
               }
             if expandedFolders.contains(.folder(folder.id)) {
-              ForEach(store.feeds.filter { $0.folderId == folder.id }) {
+              ForEach(store.activeFeeds.filter { $0.folderId == folder.id }) {
                 feedRow($0).padding(.leading, 28)
               }
             }
           }
           folderRow("未分类", folderID: nil, scope: .unfiled)
           if expandedFolders.contains(.unfiled) {
-            ForEach(store.feeds.filter { $0.folderId == nil }) {
+            ForEach(store.activeFeeds.filter { $0.folderId == nil }) {
               feedRow($0).padding(.leading, 28)
             }
+          }
+        } header: {
+          HStack {
+            Text("订阅")
+            Spacer()
+            NavigationLink("管理") { SubscriptionManagementView() }
+              .accessibilityIdentifier("manage-subscriptions")
           }
         }
         Section {
@@ -137,7 +144,7 @@ struct LibraryView: View {
     }
   }
   private func unread(folder: String?) -> Int {
-    let ids = Set(store.feeds.filter { $0.folderId == folder }.map(\.id))
+    let ids = Set(store.activeFeeds.filter { $0.folderId == folder }.map(\.id))
     return store.articles.filter { ids.contains($0.feedId) && $0.isRead != true }.count
   }
   private func feedRow(_ feed: FeedDTO) -> some View {
