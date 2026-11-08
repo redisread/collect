@@ -41,6 +41,7 @@ export type CreateFolderInput = z.infer<typeof CreateFolderSchema>;
 // ─── 订阅源类型 ───────────────────────────────────────────────────────────────
 
 export const FeedSchema = z.object({
+  unsubscribedAt: z.string().nullable().optional(),
   id: z.string(),
   userId: z.string(),
   folderId: z.string().nullable().optional(),

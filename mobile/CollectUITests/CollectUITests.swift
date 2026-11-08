@@ -1,6 +1,83 @@
 import XCTest
 
 final class CollectUITests: XCTestCase {
+  @MainActor func testManagementSearchMoveAndUnsubscribe() {
+    let app = XCUIApplication()
+    app.launchArguments = ["--ui-testing"]
+    app.launch()
+    XCTAssertTrue(app.buttons["manage-subscriptions"].waitForExistence(timeout: 10))
+    app.buttons["manage-subscriptions"].tap()
+    let search = app.searchFields.firstMatch
+    XCTAssertTrue(search.waitForExistence(timeout: 5))
+    let capture = XCTAttachment(screenshot: app.screenshot())
+    capture.name = "Subscription management"
+    capture.lifetime = .keepAlways
+    add(capture)
+    search.tap()
+    search.typeText("阅读笔记\n")
+    XCTAssertTrue(app.staticTexts["阅读笔记"].exists)
+    XCTAssertFalse(app.staticTexts["目录订阅"].exists)
+    app.buttons["选择"].tap()
+    app.staticTexts["阅读笔记"].tap()
+    app.buttons["移动"].tap()
+    app.buttons["测试目录"].tap()
+    XCTAssertTrue(app.staticTexts["已完成 1 / 1 项"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["测试目录"].exists)
+    app.buttons["选择"].tap()
+    app.staticTexts["阅读笔记"].tap()
+    app.buttons["取消订阅"].tap()
+    XCTAssertTrue(app.staticTexts["取消 1 个订阅并清理普通文章？收藏和稍后阅读会保留。"].waitForExistence(timeout: 5))
+    app.buttons["确认取消订阅"].tap()
+    XCTAssertTrue(app.staticTexts["没有匹配的订阅源"].waitForExistence(timeout: 5))
+  }
+
+  @MainActor func testAddSubscriptionIntoFolder() {
+    let app = XCUIApplication()
+    app.launchArguments = ["--ui-testing"]
+    app.launch()
+    XCTAssertTrue(app.buttons["manage-subscriptions"].waitForExistence(timeout: 10))
+    app.buttons["manage-subscriptions"].tap()
+    app.buttons["open-add-subscription"].tap()
+    app.textFields["https://"].tap()
+    app.textFields["https://"].typeText("https://example.com/new.xml")
+    app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "添加到文件夹")).firstMatch.tap()
+    app.buttons["测试目录"].tap()
+    app.buttons["submit-subscription"].tap()
+    XCTAssertTrue(app.staticTexts["新订阅"].waitForExistence(timeout: 5))
+    app.staticTexts["新订阅"].tap()
+    XCTAssertTrue(app.textFields["订阅名称"].waitForExistence(timeout: 5))
+    XCTAssertEqual(app.textFields["订阅名称"].value as? String, "新订阅")
+    XCTAssertTrue(
+      app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "测试目录")).firstMatch.exists)
+  }
+
+  @MainActor func testCreateRenameAndReorderFolders() {
+    let app = XCUIApplication()
+    app.launchArguments = ["--ui-testing"]
+    app.launch()
+    XCTAssertTrue(app.buttons["manage-subscriptions"].waitForExistence(timeout: 10))
+    app.buttons["manage-subscriptions"].tap()
+    app.buttons["管理文件夹"].tap()
+    app.buttons["新建文件夹"].tap()
+    app.alerts.textFields["文件夹名称"].typeText("稍后整理")
+    app.alerts.buttons["创建"].tap()
+    XCTAssertTrue(app.staticTexts["稍后整理"].waitForExistence(timeout: 5))
+    app.staticTexts["稍后整理"].tap()
+    let name = app.textFields["名称"]
+    XCTAssertTrue(name.waitForExistence(timeout: 5))
+    name.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
+    name.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 4) + "归档")
+    app.buttons["保存"].tap()
+    XCTAssertTrue(app.staticTexts["归档"].waitForExistence(timeout: 5))
+    app.buttons["排序"].tap()
+    let moved = app.cells.containing(.staticText, identifier: "归档").firstMatch
+    let other = app.cells.containing(.staticText, identifier: "测试目录").firstMatch
+    moved.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).press(
+      forDuration: 0.8,
+      thenDragTo: other.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.1)))
+    XCTAssertLessThan(moved.frame.minY, other.frame.minY)
+  }
+
   @MainActor func testSettingsToolbarEntry() {
     let app = XCUIApplication()
     app.launchArguments = ["--ui-testing"]
@@ -80,7 +157,12 @@ final class CollectUITests: XCTestCase {
     app.buttons["unclassified-folder-expand"].tap()
     app.staticTexts["阅读笔记"].press(forDuration: 1)
     app.buttons["管理订阅"].tap()
-    XCTAssertTrue(app.buttons["保存位置"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.buttons["保存"].waitForExistence(timeout: 5))
+    app.buttons["取消订阅"].tap()
+    XCTAssertTrue(app.staticTexts["取消订阅并清理普通文章？收藏和稍后阅读会保留。"].waitForExistence(timeout: 5))
+    app.buttons["确认取消订阅"].tap()
+    XCTAssertTrue(app.navigationBars["Collect"].waitForExistence(timeout: 5))
+    XCTAssertFalse(app.staticTexts["阅读笔记"].exists)
   }
 
   @MainActor func testRestoresReadingProgress() {

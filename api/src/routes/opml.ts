@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, and, isNull } from "drizzle-orm";
 import { getDb } from "../db";
 import { feeds, folders } from "../db/schema";
 import { authMiddleware } from "../middleware/auth";
@@ -17,7 +17,7 @@ app.get("/", async c => {
   const db = getDb(c.env.DB);
   const userId = c.get("userId");
   const [feedList, folderList] = await Promise.all([
-    db.select().from(feeds).where(eq(feeds.userId, userId)).orderBy(asc(feeds.sortOrder)),
+    db.select().from(feeds).where(and(eq(feeds.userId, userId), isNull(feeds.unsubscribedAt))).orderBy(asc(feeds.sortOrder)),
     db.select().from(folders).where(eq(folders.userId, userId)).orderBy(asc(folders.sortOrder)),
   ]);
   const folderMap = new Map(folderList.map(folder => [folder.id, folder.name]));

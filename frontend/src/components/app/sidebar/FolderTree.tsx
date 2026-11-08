@@ -11,14 +11,14 @@ export function FolderTree() {
 	const fetchArticles = useArticleStore(state => state.fetchArticles);
 
 	// 无文件夹的订阅源
-	const rootFeeds = feeds.filter((f) => !f.folderId);
+	const rootFeeds = feeds.filter((f) => !f.folderId && !f.unsubscribedAt);
 
 	return (
 		<div className="space-y-0.5 px-2">
 			{moveStatus && <p role="status" className="px-3 py-2 text-xs text-[var(--text-secondary)]">{moveStatus}</p>}
 			{/* 文件夹 */}
 			{folders.map((folder) => {
-				const folderFeeds = feeds.filter((f) => f.folderId === folder.id);
+				const folderFeeds = feeds.filter((f) => f.folderId === folder.id && !f.unsubscribedAt);
 				return <FeedDropZone key={folder.id} folderId={folder.id}><FolderItem folder={folder} feeds={folderFeeds} /></FeedDropZone>;
 			})}
 

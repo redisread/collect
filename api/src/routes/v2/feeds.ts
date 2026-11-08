@@ -1,3 +1,7 @@
+import { HTTPException } from "hono/http-exception";
+import { saveSubscription } from "../../services/SubscriptionCreation";
+import { normalizeFeedUrl } from "../../lib/rss/public-fetch";
+import { unsubscribeFeeds } from "../../services/SubscriptionManagement";
 import { Hono } from "hono";
 import { eq, and, asc, desc, sql } from "drizzle-orm";
 import { zValidator } from "@hono/zod-validator";
@@ -80,6 +84,7 @@ feedsV2Route.get("/", async (c) => {
 
     return c.json({ success: true, data: result });
   } catch (err) {
+      if (err instanceof HTTPException) throw err;
     return c.json(
       {
         success: false,
@@ -109,78 +114,23 @@ feedsV2Route.post("/", zValidator("json", createFeedSchema), async (c) => {
     const cache = new CacheManager(c.env.COLLECT_KV);
     const fetcher = new RSSFetcher();
 
-    let feedUrl = body.url.trim();
+    if (body.folderId) {
+      const folder = await db.select({id:folders.id}).from(folders).where(and(eq(folders.id,body.folderId),eq(folders.userId,userId))).get();
+      if (!folder) return c.json({success:false,error:"目标文件夹不存在"},400);
+    }
+    let feedUrl = normalizeFeedUrl(body.url.trim());
 
     // Auto-discover feed URL
     const discovered = await discoverFeedUrl(feedUrl);
-    if (discovered) feedUrl = discovered;
+    if (discovered) feedUrl = normalizeFeedUrl(discovered);
 
-    // Check for existing feed
-    const [existing] = await db
-      .select({ id: feeds.id })
-      .from(feeds)
-      .where(and(eq(feeds.feedUrl, feedUrl), eq(feeds.userId, userId)));
-
-    if (existing) {
-      return c.json({ success: false, error: "该订阅源已存在" }, 409);
-    }
+    const existing = await db.select().from(feeds).where(and(eq(feeds.feedUrl,feedUrl),eq(feeds.userId,userId))).get();
+    if (existing && !existing.unsubscribedAt) return c.json({success:false,error:"该订阅源已存在"},409);
 
     // Fetch and parse feed
     const parsed = await fetcher.fetch(feedUrl);
 
-    // Get sort order
-    const existingFeeds = await db
-      .select({ sortOrder: feeds.sortOrder })
-      .from(feeds)
-      .where(eq(feeds.userId, userId))
-      .orderBy(desc(feeds.sortOrder))
-      .limit(1);
-
-    const nextOrder = (existingFeeds[0]?.sortOrder ?? 0) + 1;
-
-    // Calculate next fetch time
-    const fetchInterval = body.fetchIntervalMinutes ?? 60;
-    const nextFetchAt = new Date();
-    nextFetchAt.setMinutes(nextFetchAt.getMinutes() + fetchInterval);
-
-    // Insert feed
-    const [feed] = await db
-      .insert(feeds)
-      .values({
-        userId,
-        folderId: body.folderId ?? null,
-        title: parsed.title,
-        url: parsed.siteUrl || feedUrl,
-        feedUrl,
-        description: parsed.description,
-        faviconUrl: parsed.faviconUrl,
-        lastFetchedAt: new Date().toISOString(),
-        nextFetchAt: nextFetchAt.toISOString(),
-        fetchIntervalMinutes: fetchInterval,
-        sortOrder: nextOrder,
-      })
-      .returning();
-
-    // Insert articles (limit to first 50)
-    if (parsed.articles.length > 0) {
-      const articleValues = parsed.articles.slice(0, 50).map((a) => ({
-        userId,
-        feedId: feed.id,
-        title: a.title,
-        url: a.url,
-        content: a.content,
-        contentText: stripHtml(a.content),
-        summary: a.summary,
-        author: a.author,
-        imageUrl: a.imageUrl,
-        publishedAt: a.publishedAt,
-        isRead: 0 as any,
-        isStarred: 0 as any,
-        isReadLater: 0 as any,
-      }));
-
-      await db.insert(articles).values(articleValues).onConflictDoNothing();
-    }
+    const feed = await saveSubscription(db,userId,parsed,{feedUrl,folderId:body.folderId,existing,fetchIntervalMinutes:body.fetchIntervalMinutes});
 
     // Invalidate cache
     await cache.invalidateUser(userId);
@@ -188,11 +138,12 @@ feedsV2Route.post("/", zValidator("json", createFeedSchema), async (c) => {
     return c.json(
       {
         success: true,
-        data: { ...feed, unreadCount: parsed.articles.length },
+        data: feed,
       },
       201
     );
   } catch (err) {
+      if (err instanceof HTTPException) throw err;
     return c.json(
       {
         success: false,
@@ -242,6 +193,7 @@ feedsV2Route.get("/:id", async (c) => {
       },
     });
   } catch (err) {
+      if (err instanceof HTTPException) throw err;
     return c.json(
       {
         success: false,
@@ -310,6 +262,7 @@ feedsV2Route.put("/:id", zValidator("json", updateFeedSchema), async (c) => {
 
     return c.json({ success: true, data: updated });
   } catch (err) {
+      if (err instanceof HTTPException) throw err;
     return c.json(
       {
         success: false,
@@ -342,13 +295,14 @@ feedsV2Route.delete("/:id", async (c) => {
     }
 
     // Delete feed (cascades to articles)
-    await db.delete(feeds).where(and(eq(feeds.id, id), eq(feeds.userId, userId)));
+    await unsubscribeFeeds(db,userId,[id]);
 
     // Invalidate cache
     await cache.invalidateUser(userId);
 
     return c.json({ success: true, data: { id } });
   } catch (err) {
+      if (err instanceof HTTPException) throw err;
     return c.json(
       {
         success: false,
@@ -377,7 +331,7 @@ feedsV2Route.post("/:id/refresh", async (c) => {
       .from(feeds)
       .where(and(eq(feeds.id, id), eq(feeds.userId, userId)));
 
-    if (!feed) {
+    if (!feed || feed.unsubscribedAt) {
       return c.json({ success: false, error: "订阅源不存在" }, 404);
     }
 
@@ -443,6 +397,7 @@ feedsV2Route.post("/:id/refresh", async (c) => {
       },
     });
   } catch (err) {
+      if (err instanceof HTTPException) throw err;
     return c.json(
       {
         success: false,
@@ -490,6 +445,7 @@ feedsV2Route.get("/:id/stats", async (c) => {
       data: stats[0],
     });
   } catch (err) {
+      if (err instanceof HTTPException) throw err;
     return c.json(
       {
         success: false,

@@ -2,6 +2,7 @@ import Foundation
 
 struct FeedDTO: Codable, Identifiable, Sendable, Equatable {
   let id: String
+  var unsubscribedAt: String?
   var sortOrder: Int?
   var autoExtract: Bool?
   var title: String

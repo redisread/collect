@@ -1,3 +1,4 @@
+import { HTTPException } from "hono/http-exception";
 import profileRoute from "./routes/profile";
 import { Hono } from "hono";
 import annotationsRoute from "./routes/annotations";
@@ -71,6 +72,7 @@ export function createApiApp() {
   app.route("/api/translations", translationsRoute);
 
   app.onError((error, c) => {
+    if (error instanceof HTTPException) return c.json({success:false,error:error.message},error.status);
     console.error(JSON.stringify({
       event: "api_request_failed",
       requestId: c.get("requestId"),

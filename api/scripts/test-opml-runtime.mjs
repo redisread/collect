@@ -88,6 +88,12 @@ try {
   assert.ok(deleted.deleted.some(row => row.kind === 'article' && row.id === articleID));
   assert.ok(deleted.deleted.some(row => row.kind === 'feed' && row.id === changed.articles[0].feedId));
   console.log('PASS workerd native bootstrap 448 articles, empty delta, state delta and cascade deletion');
+  const managed = await request('/management');
+  assert.equal(managed.moved,2);
+  assert.equal(managed.ordered,2);
+  assert.equal(managed.retained.length,1);
+  assert.equal(managed.archived,true);
+  console.log('PASS workerd atomic subscription move/order/unsubscribe and saved article preservation');
 
 } finally {
   await mf?.dispose();

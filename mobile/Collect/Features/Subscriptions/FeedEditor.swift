@@ -4,23 +4,29 @@ struct FeedEditor: View {
   @Environment(LibraryStore.self) private var store
   @Environment(\.dismiss) private var dismiss
   let feed: FeedDTO
+  @State private var name = ""
+  @State private var saving = false
   @State private var autoExtract = false
   @State private var folder = ""
   @State private var deleting = false
   @State private var error: String?
   var body: some View {
     Form {
+      TextField("订阅名称", text: $name)
       Text(feed.feedUrl).font(.footnote).textSelection(.enabled)
       Toggle("自动提取全文", isOn: $autoExtract)
       Picker("文件夹", selection: $folder) {
         Text("未分类").tag("")
         ForEach(store.folders) { Text($0.name).tag($0.id) }
       }
-      Button("保存位置") {
+      Button("保存") {
+        saving = true
         Task {
+          defer { saving = false }
           do {
             guard let session = store.session else { return }
             let body = try JSONSerialization.data(withJSONObject: [
+              "title": name.trimmingCharacters(in: .whitespacesAndNewlines),
               "autoExtract": autoExtract, "folderId": folder.isEmpty ? NSNull() : folder as Any,
             ])
             let updated: FeedDTO = try await store.api.request(
@@ -31,16 +37,22 @@ struct FeedEditor: View {
           } catch { self.error = error.localizedDescription }
         }
       }
+      .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || name.count > 200)
       Button("取消订阅", role: .destructive) { deleting = true }
       if let error { Text(error).foregroundStyle(.red) }
-    }.navigationTitle(feed.title)
+    }.disabled(saving).navigationTitle(feed.title)
       .onAppear {
+        name = feed.title
         folder = feed.folderId ?? ""
         autoExtract = feed.autoExtract == true
       }
-      .confirmationDialog("取消订阅将删除该订阅的文章", isPresented: $deleting) {
-        Button("取消订阅", role: .destructive) {
+      .confirmationDialog(
+        "取消订阅并清理普通文章？收藏和稍后阅读会保留。", isPresented: $deleting, titleVisibility: .visible
+      ) {
+        Button("确认取消订阅", role: .destructive) {
+          saving = true
           Task {
+            defer { saving = false }
             do {
               try await store.command("/api/feeds/\(feed.id)", method: "DELETE")
               dismiss()

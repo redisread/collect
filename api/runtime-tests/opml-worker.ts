@@ -1,3 +1,4 @@
+import { moveSubscriptions, unsubscribeFeeds, reorderFolders } from "../src/services/SubscriptionManagement";
 import { nativeSyncPage } from "../src/lib/native-sync";
 import { getDb } from "../src/db";
 // Test-only Worker. Never imported by the application entrypoint.
@@ -8,6 +9,16 @@ import type { OpmlImportMessage } from "../src/services/OpmlImportService";
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.pathname === "/management") {
+      const rows = await env.DB.prepare("SELECT id,feed_id FROM articles LIMIT 2").all<{id:string;feed_id:string}>();
+      const ids = rows.results.map(row=>row.feed_id);
+      await env.DB.prepare("INSERT INTO folders(id,user_id,name) VALUES ('manage-one','runtime','One'),('manage-two','runtime','Two')").run();
+      const moved = await moveSubscriptions(getDb(env.DB),'runtime',ids,'manage-one');
+      const ordered = await reorderFolders(getDb(env.DB),'runtime',['manage-two','manage-one']);
+      await env.DB.prepare('UPDATE articles SET is_starred=1 WHERE id=?').bind(rows.results[0].id).run();
+      const saved = await unsubscribeFeeds(getDb(env.DB),'runtime',ids);
+      return Response.json({moved:moved.length,ordered:ordered.length,retained:saved.articles.map(a=>a.id),archived:saved.feeds.every(f=>!!f.unsubscribedAt)});
+    }
     if (url.pathname === "/native-sync") return Response.json(await nativeSyncPage(getDb(env.DB), "runtime", Number(url.searchParams.get("after") ?? 0)));
     if (url.pathname === "/start") {
       const count = Number(url.searchParams.get("count"));

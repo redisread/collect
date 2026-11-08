@@ -20,10 +20,10 @@ struct ArticleListView: View {
       case .starred: matches = article.isStarred == true
       case .later: matches = article.isReadLater == true
       case .unfiled:
-        matches = store.feeds.contains { $0.id == article.feedId && $0.folderId == nil }
+        matches = store.activeFeeds.contains { $0.id == article.feedId && $0.folderId == nil }
       case .feed(let id): matches = article.feedId == id
       case .folder(let id):
-        matches = store.feeds.contains { $0.id == article.feedId && $0.folderId == id }
+        matches = store.activeFeeds.contains { $0.id == article.feedId && $0.folderId == id }
       }
       return matches && (!hideRead || article.isRead != true)
         && (search.isEmpty || article.title.localizedStandardContains(search)

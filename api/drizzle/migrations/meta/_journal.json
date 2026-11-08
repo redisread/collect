@@ -64,6 +64,13 @@
       "when": 1794138826118,
       "tag": "0008_native_incremental_sync",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1794141901856,
+      "tag": "0009_subscription_management",
+      "breakpoints": true
     }
   ]
 }

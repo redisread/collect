@@ -1,5 +1,6 @@
+import { articleIdForUrl } from "./FeedSyncService";
 import { FeedFetchError } from "../lib/rss/feed-error";
-import { and, asc, desc, eq, inArray, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lt, sql, isNull } from "drizzle-orm";
 import { getDb } from "../db";
 import { feeds, opmlImportItems, opmlImportJobs } from "../db/schema";
 import { parseOpml, OpmlParseError } from "../lib/rss/opml";
@@ -37,7 +38,7 @@ export async function createImportPreview(env: CloudflareEnv, userId: string, xm
   const parsed = parseOpml(xml);
   if (!parsed.length) throw new OpmlParseError("文件中没有找到订阅源");
   const db = getDb(env.DB);
-  const existing = await db.select({ url: feeds.feedUrl }).from(feeds).where(eq(feeds.userId, userId));
+  const existing = await db.select({ url: feeds.feedUrl }).from(feeds).where(and(eq(feeds.userId, userId),isNull(feeds.unsubscribedAt)));
   const seen = new Set(existing.map(feed => canonicalOrOriginal(feed.url)));
   const jobId = crypto.randomUUID();
   const items = parsed.map((feed, position) => {
@@ -130,9 +131,9 @@ export async function dispatchImportItems(env: CloudflareEnv, jobId?: string) {
   await finishImportJobs(env);
 }
 
-async function saveImportedFeed(env: CloudflareEnv, item: Item, userId: string, token: string, parsed: ParsedFeed) {
+async function saveImportedFeed(env: CloudflareEnv, item: Item, userId: string, token: string, parsed: ParsedFeed, archivedID?: string) {
   const folderName = item.folderName?.trim() === "未分类" ? null : item.folderName;
-  const feedId = crypto.randomUUID();
+  const feedId = archivedID ?? crypto.randomUUID();
   const folderId = crypto.randomUUID();
   const now = new Date().toISOString();
   const siteUrl = safeSiteUrl(parsed.siteUrl || item.siteUrl || undefined, item.feedUrl);
@@ -141,25 +142,29 @@ async function saveImportedFeed(env: CloudflareEnv, item: Item, userId: string, 
   if (folderName) {
     statements.push(env.DB.prepare(`INSERT INTO folders(id,user_id,name) SELECT ?,?,? WHERE ${guard}
       AND NOT EXISTS (SELECT 1 FROM folders WHERE user_id=? AND name=?)
-      AND NOT EXISTS (SELECT 1 FROM feeds WHERE user_id=? AND feed_url=?)`)
+      AND NOT EXISTS (SELECT 1 FROM feeds WHERE user_id=? AND feed_url=? AND unsubscribed_at IS NULL)`)
       .bind(folderId, userId, folderName, item.id, token, userId, folderName, userId, item.feedUrl));
   }
   statements.push(env.DB.prepare(`INSERT INTO feeds(id,user_id,folder_id,title,url,feed_url,description,favicon_url,last_fetched_at,next_fetch_at)
     SELECT ?,?,(SELECT id FROM folders WHERE user_id=? AND name=? ORDER BY id LIMIT 1),?,?,?,?,?,?,?
-    WHERE ${guard} ON CONFLICT(feed_url,user_id) DO NOTHING`)
+    WHERE ${guard} ON CONFLICT(feed_url,user_id) DO UPDATE SET unsubscribed_at=NULL,is_active=1,folder_id=excluded.folder_id,
+      last_etag=NULL,last_modified=NULL,content_hash=NULL,next_fetch_at=excluded.next_fetch_at WHERE feeds.unsubscribed_at IS NOT NULL`)
     .bind(feedId, userId, userId, folderName, item.title || parsed.title || item.feedUrl, siteUrl, item.feedUrl,
       parsed.description || "", parsed.faviconUrl || new URL("/favicon.ico", siteUrl).href, now,
       new Date(Date.now() + 3_600_000).toISOString(), item.id, token));
   const initialArticles = parsed.articles.slice(0, 50);
+  if (archivedID) statements.push(env.DB.prepare(`DELETE FROM expired_article_urls WHERE feed_id=? AND url IN (SELECT value FROM json_each(?)) AND ${guard}`)
+    .bind(archivedID,JSON.stringify(initialArticles.map(a=>a.url)),item.id,token));
+  const articleIDs = await Promise.all(initialArticles.map(a=>articleIdForUrl(feedId,a.url)));
   for (let offset = 0; offset < initialArticles.length; offset += 5) {
     const values: (string | null)[] = [];
-    const selects = initialArticles.slice(offset, offset + 5).map(article => {
-      values.push(crypto.randomUUID(), userId, feedId, article.title, article.url, article.content,
+    const selects = initialArticles.slice(offset, offset + 5).map((article,index) => {
+      values.push(articleIDs[offset+index], userId, feedId, article.title, article.url, article.content,
         article.content.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim(), article.summary, article.author,
-        article.imageUrl, article.publishedAt, feedId, item.id, token);
-      return `SELECT ?,?,?,?,?,?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM feeds WHERE id=?) AND ${guard}`;
+        article.imageUrl, article.publishedAt, feedId, item.id, token, feedId, article.url);
+      return `SELECT ?,?,?,?,?,?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM feeds WHERE id=?) AND ${guard} AND NOT EXISTS (SELECT 1 FROM articles WHERE feed_id=? AND url=?)`;
     });
-    statements.push(env.DB.prepare(`INSERT INTO articles(id,user_id,feed_id,title,url,content,content_text,summary,author,image_url,published_at)
+    statements.push(env.DB.prepare(`INSERT OR IGNORE INTO articles(id,user_id,feed_id,title,url,content,content_text,summary,author,image_url,published_at)
       ${selects.join(" UNION ALL ")}`).bind(...values));
   }
   statements.push(env.DB.prepare(`UPDATE opml_import_items SET status=CASE WHEN EXISTS(SELECT 1 FROM feeds WHERE id=?) THEN 'imported' ELSE 'skipped' END,
@@ -186,8 +191,8 @@ export async function processImportItem(env: CloudflareEnv, id: string, fetcher:
     await finishImportJobs(env); return;
   }
   try {
-    const existing = await db.select({ id: feeds.id }).from(feeds).where(and(eq(feeds.userId, job.userId), eq(feeds.feedUrl, item.feedUrl))).get();
-    if (existing) {
+    const existing = await db.select({ id: feeds.id, unsubscribedAt:feeds.unsubscribedAt }).from(feeds).where(and(eq(feeds.userId, job.userId), eq(feeds.feedUrl, item.feedUrl))).get();
+    if (existing && !existing.unsubscribedAt) {
       await db.update(opmlImportItems).set({ status: "skipped", message: "已存在，保留已有订阅", leaseToken: null, leaseUntil: 0 })
         .where(and(eq(opmlImportItems.id, id), eq(opmlImportItems.leaseToken, token)));
     } else {
@@ -213,7 +218,7 @@ export async function processImportItem(env: CloudflareEnv, id: string, fetcher:
           .where(and(eq(opmlImportItems.id, id), eq(opmlImportItems.leaseToken, token)));
         await finishImportJobs(env); return;
       }
-      await saveImportedFeed(env, item, job.userId, token, parsed);
+      await saveImportedFeed(env, item, job.userId, token, parsed, existing?.id);
     }
     await finishImportJobs(env);
   } catch (error) {

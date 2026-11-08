@@ -15,6 +15,7 @@ export interface Folder {
 
 // ==================== Feed Types ====================
 export interface Feed {
+  unsubscribedAt?: string | null;
   autoExtract?: boolean;
   starredCount?: number;
   readLaterCount?: number;

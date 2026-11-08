@@ -116,15 +116,19 @@ export const useFeedStore = create<FeedStore>((set, get) => ({
 			});
 			const json = await res.json() as { success: boolean; data: FeedWithUnreadCount; error?: string };
 			if (!json.success) throw new Error(json.error ?? "添加失败");
-			set((state) => ({ feeds: [...state.feeds, json.data] }));
+			set((state) => ({ feeds: [...state.feeds.filter(feed => feed.id !== json.data.id), json.data] }));
 		} finally {
 			set({ isLoading: false });
 		}
 	},
 
 	deleteFeed: async (feedId) => {
-		await fetch(`${API_BASE}/api/feeds/${feedId}`, { method: "DELETE", credentials: "include" });
-		set((state) => ({ feeds: state.feeds.filter((f) => f.id !== feedId) }));
+		const response = await fetch(`${API_BASE}/api/feeds/${feedId}`, { method: "DELETE", credentials: "include" });
+		if (!response.ok) throw new Error("取消订阅失败，请重试");
+		const source = get().selectedSource;
+		if (source.type === "feed" && source.feedId === feedId) get().setSelectedSource({type:"all"});
+		await get().fetchFeeds();
+		await useArticleStore.getState().fetchArticles(get().selectedSource, false);
 	},
 
 	moveFeedToFolder: async (feedId, folderId) => {
