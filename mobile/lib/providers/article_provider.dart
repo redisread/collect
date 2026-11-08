@@ -60,6 +60,7 @@ class ArticlesNotifier extends StateNotifier<ArticlesState> {
     try {
       final api = ref.read(apiServiceProvider);
       await api.updateArticle(articleId, {'isRead': newReadStatus});
+      ref.invalidate(feedsProvider);
     } catch (e) {
       // 失败时回滚
       _updateArticle(articleId, isRead: article.isRead);
@@ -100,7 +101,8 @@ class ArticlesNotifier extends StateNotifier<ArticlesState> {
   Future<void> batchUpdate(List<String> articleIds, String action) async {
     final api = ref.read(apiServiceProvider);
     await api.batchUpdateArticles(action, articleIds);
-    await loadArticles();
+    ref.invalidate(feedsProvider);
+    await _reloadSelected();
   }
 
   /// 提取文章内容
@@ -108,8 +110,13 @@ class ArticlesNotifier extends StateNotifier<ArticlesState> {
     final api = ref.read(apiServiceProvider);
     await api.extractArticle(articleId);
     // 重新加载文章以获取提取后的内容
-    await loadArticles();
+    await _reloadSelected();
   }
+
+  Future<void> _reloadSelected() => loadArticles(
+        feedId: ref.read(selectedFeedIdProvider),
+        uncategorized: ref.read(uncategorizedSelectedProvider),
+      );
 
   /// 更新阅读进度
   Future<void> updateReadingProgress(

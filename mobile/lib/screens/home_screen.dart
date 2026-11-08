@@ -37,7 +37,7 @@ class HomeScreen extends ConsumerWidget {
                   ),
                 ),
               ),
-              child: _buildFeedSidebar(ref, context),
+              child: Material(child: _buildFeedSidebar(ref, context)),
             ),
           ),
           Expanded(child: _buildArticleList(context, ref)),
