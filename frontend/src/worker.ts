@@ -53,12 +53,13 @@ const worker = {
     }
 
     if (controller.cron === "0 * * * *") {
-      const result = await sendPendingDigests(env);
-      console.log(JSON.stringify({
-        event: "digest_schedule_completed",
-        sent: result.sent,
-        failed: result.errors.length,
-      }));
+      await runScheduledTasks([
+        { stage: "article_cleanup", run: () => createFeedSyncService(env).cleanupOldArticles().then(() => {}) },
+        { stage: "digest", run: async () => {
+          const result = await sendPendingDigests(env);
+          console.log(JSON.stringify({ event: "digest_schedule_completed", sent: result.sent, failed: result.errors.length }));
+        } },
+      ]);
     }
   },
   async queue(batch, env) {

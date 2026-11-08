@@ -1,3 +1,5 @@
+import { automaticallyExtract } from "../lib/automatic-extraction";
+import { articleExpiry } from "../lib/article-retention";
 import { nativeContent } from "../lib/native-content";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -22,7 +24,7 @@ app.delete("/session", async c => {
 app.get("/articles", async c => {
   const cursor = c.req.query("after") || "";
   const rows = await getDb(c.env.DB).select({
-    id: articles.id, feedId: articles.feedId, title: articles.title, url: articles.url,
+    expiresAt: articleExpiry(), id: articles.id, feedId: articles.feedId, title: articles.title, url: articles.url,
     summary: articles.summary, author: articles.author, publishedAt: articles.publishedAt,
     imageUrl: articles.imageUrl, isRead: articles.isRead, isStarred: articles.isStarred,
     isReadLater: articles.isReadLater, readingProgress: articles.readingProgress,
@@ -33,9 +35,10 @@ app.get("/articles", async c => {
   return c.json({ success: true, data: { articles: rows, next: rows.length === 200 ? rows.at(-1)!.id : null } });
 });
 app.get("/articles/:id", async c => {
-  const article = await getDb(c.env.DB).select().from(articles)
+  let article = await getDb(c.env.DB).select().from(articles)
     .where(and(eq(articles.userId, c.get("userId")), eq(articles.id, c.req.param("id")))).get();
   if (!article) return c.json({ success: false, error: "文章不存在" }, 404);
+  if (c.req.query("extract") === "true") article = await automaticallyExtract(getDb(c.env.DB), article);
   return c.json({ success: true, data: { ...article, ...nativeContent(article.content || article.summary || "", article.url) } });
 });
 

@@ -1,3 +1,5 @@
+import { automaticallyExtract } from "../lib/automatic-extraction";
+import { articleExpiry } from "../lib/article-retention";
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
@@ -104,6 +106,7 @@ articlesRoute.get("/", async (c) => {
     const [articleList, countResult] = await Promise.all([
       db
         .select({
+          expiresAt: articleExpiry(),
           id: articles.id,
           feedId: articles.feedId,
           title: articles.title,
@@ -148,8 +151,10 @@ articlesRoute.get("/:id", async (c) => {
     const userId = c.get("userId");
     const id = c.req.param("id");
     const db = getDb(c.env.DB);
-    const article = await getArticleForUser(db, id, userId);
+    let article = await getArticleForUser(db, id, userId);
     if (!article) return c.json({ success: false, error: "文章不存在" }, 404);
+
+    article = await automaticallyExtract(db, article);
 
     // 自动标记为已读
     if (!article.isRead) {
@@ -157,7 +162,8 @@ articlesRoute.get("/:id", async (c) => {
       article.isRead = true;
     }
 
-    return c.json({ success: true, data: article });
+    const expiry = await db.select({ expiresAt: articleExpiry() }).from(articles).where(eq(articles.id, id)).get();
+    return c.json({ success: true, data: { ...article, expiresAt: expiry?.expiresAt } });
   } catch (err) {
     return c.json({ success: false, error: err instanceof Error ? err.message : "获取文章失败" }, 500);
   }
@@ -189,7 +195,8 @@ articlesRoute.put("/:id", async (c) => {
       .where(eq(articles.id, id))
       .returning();
 
-    return c.json({ success: true, data: updated });
+    const expiry = await db.select({ expiresAt: articleExpiry() }).from(articles).where(eq(articles.id, id)).get();
+    return c.json({ success: true, data: { ...updated, expiresAt: expiry?.expiresAt } });
   } catch (err) {
     return c.json({ success: false, error: err instanceof Error ? err.message : "更新文章失败" }, 500);
   }

@@ -1,3 +1,4 @@
+import profileRoute from "./routes/profile";
 import { Hono } from "hono";
 import annotationsRoute from "./routes/annotations";
 import nativeRoute from "./routes/native";
@@ -54,6 +55,7 @@ export function createApiApp() {
 
   app.route("/api/auth", authRoute);
   app.route("/api/native", nativeRoute);
+  app.route("/api/profile", profileRoute);
   app.route("/api/folders", foldersRoute);
   app.route("/api/feeds", feedsRoute);
   app.route("/api/articles", articlesRoute);

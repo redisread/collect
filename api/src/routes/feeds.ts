@@ -45,17 +45,21 @@ feedsRoute.get("/", async (c) => {
     const unreadCounts = await db
       .select({
         feedId: articles.feedId,
-        count: sql<number>`count(*)`.as("count"),
+        count: sql<number>`sum(case when is_read = 0 then 1 else 0 end)`,
+        starredCount: sql<number>`sum(case when is_starred = 1 then 1 else 0 end)`,
+        readLaterCount: sql<number>`sum(case when is_read_later = 1 then 1 else 0 end)`,
       })
       .from(articles)
-      .where(eq(articles.isRead, false))
+      .where(eq(articles.userId, userId))
       .groupBy(articles.feedId);
 
-    const unreadMap = new Map(unreadCounts.map((r) => [r.feedId, r.count]));
+    const unreadMap = new Map(unreadCounts.map((r) => [r.feedId, r]));
 
     const result = feedList.map((feed) => ({
       ...feed,
-      unreadCount: unreadMap.get(feed.id) ?? 0,
+      unreadCount: unreadMap.get(feed.id)?.count ?? 0,
+      starredCount: unreadMap.get(feed.id)?.starredCount ?? 0,
+      readLaterCount: unreadMap.get(feed.id)?.readLaterCount ?? 0,
     }));
 
     return c.json({ success: true, data: result });
@@ -188,6 +192,7 @@ feedsRoute.put("/:id", async (c) => {
       title?: string;
       folderId?: string | null;
       sortOrder?: number;
+      autoExtract?: boolean;
     };
 
     const db = getDb(c.env.DB);
@@ -200,6 +205,10 @@ feedsRoute.put("/:id", async (c) => {
     const updates: Partial<typeof existing> = {
       updatedAt: new Date().toISOString(),
     };
+    if (body.autoExtract !== undefined) {
+      if (typeof body.autoExtract !== "boolean") return c.json({ success: false, error: "无效的全文提取设置" }, 400);
+      updates.autoExtract = body.autoExtract;
+    }
     if (body.title !== undefined) updates.title = body.title.trim();
     if ("folderId" in body) {
       if (body.folderId !== null && (typeof body.folderId !== "string" || !body.folderId)) {
@@ -263,7 +272,7 @@ feedsRoute.post("/:id/mark-all-read", async (c) => {
     await db
       .update(articles)
       .set({ isRead: true })
-      .where(eq(articles.feedId, id));
+      .where(and(eq(articles.feedId, id), eq(articles.userId, userId), eq(articles.isRead, false)));
 
     return c.json({
       success: true,

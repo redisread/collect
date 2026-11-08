@@ -1,3 +1,4 @@
+import { fetchPublicFeed } from "../rss/public-fetch";
 import { Readability } from "@mozilla/readability";
 import { parseHTML } from "linkedom";
 
@@ -73,7 +74,8 @@ export async function extractArticle(url: string): Promise<ExtractedContent> {
  */
 async function fetchAndExtract(url: string): Promise<ExtractedContent> {
   // 获取页面 HTML
-  const response = await fetch(url, {
+  const response = await fetchPublicFeed(url, {
+    signal: AbortSignal.timeout(EXTRACTION_TIMEOUT),
     headers: {
       "User-Agent": "Mozilla/5.0 (compatible; CollectBot/1.0)",
     },
