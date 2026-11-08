@@ -83,18 +83,18 @@ struct ArticleListView: View {
           .swipeActions(edge: .leading) {
             Button(article.isRead == true ? "标记未读" : "标记已读", systemImage: "checkmark") {
               store.change(article.id, field: .isRead, value: article.isRead == true ? 0 : 1)
-              Task { await store.sync() }
+              Task { await store.uploadPending() }
             }.tint(.orange)
           }
           .swipeActions(edge: .trailing) {
             Button("稍后阅读", systemImage: "bookmark") {
               store.change(
                 article.id, field: .isReadLater, value: article.isReadLater == true ? 0 : 1)
-              Task { await store.sync() }
+              Task { await store.uploadPending() }
             }.tint(.blue)
             Button("收藏", systemImage: "star") {
               store.change(article.id, field: .isStarred, value: article.isStarred == true ? 0 : 1)
-              Task { await store.sync() }
+              Task { await store.uploadPending() }
             }.tint(.yellow)
           }
         }

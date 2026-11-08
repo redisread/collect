@@ -64,10 +64,11 @@ struct RetentionSettingsView: View {
       ])
       let _: EmptyResponse = try await store.api.request(
         "/api/settings/retention", method: "PUT", token: session.token, body: body)
+      guard store.session?.token == session.token else { return }
       savedDays = value.days
       preview = nil
       message = "保存期限已同步"
-      await store.sync()
+      try store.savePreferences(ReaderPreferences(articleRetentionDays: value.days, translationTargetLanguage: store.language))
     } catch { message = error.localizedDescription }
   }
 }

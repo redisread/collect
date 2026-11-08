@@ -8,10 +8,10 @@ struct CollectApp: App {
   @AppStorage("appearance") private var appearance = "system"
   @State private var store: LibraryStore?
   @State private var startupError: String?
-  @Environment(\.scenePhase) private var phase
 
   init() {
     do {
+      BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: "com.example.collect.refresh")
       if UserDefaults.standard.string(forKey: "appearance") == nil {
         let existed = FileManager.default.fileExists(
           atPath: URL.applicationSupportDirectory.appendingPathComponent("default.store").path)
@@ -64,12 +64,12 @@ struct CollectApp: App {
           .task {
             for await path in NWPathMonitor() {
               if Task.isCancelled { break }
-              if path.status == .satisfied { await store.sync() }
+              if path.status == .satisfied { await store.uploadPending() }
             }
           }
           .task(id: store.session?.account.id) {
             await BackgroundDownloads.shared.restore()
-            await store.sync()
+            await store.refreshOnLaunch()
           }
         } else {
           ContentUnavailableView(
@@ -79,18 +79,6 @@ struct CollectApp: App {
       }
       .preferredColorScheme(appearance == "system" ? nil : appearance == "light" ? .light : .dark)
       .tint(.orange)
-      .onChange(of: phase) { _, value in
-        if value == .active { Task { await store?.sync() } }
-        if value == .background {
-          let request = BGAppRefreshTaskRequest(identifier: "com.example.collect.refresh")
-          request.earliestBeginDate = .now.addingTimeInterval(3600)
-          do { try BGTaskScheduler.shared.submit(request) } catch
-          { /* Foreground synchronization remains available when scheduling is denied. */  }
-        }
-      }
-    }
-    .backgroundTask(.appRefresh("com.example.collect.refresh")) {
-      await store?.sync()
     }
     .backgroundTask(.urlSession(BackgroundDownloads.identifier)) {
       await BackgroundDownloads.shared.handleBackgroundEvents()

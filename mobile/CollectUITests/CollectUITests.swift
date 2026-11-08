@@ -1,6 +1,23 @@
 import XCTest
 
 final class CollectUITests: XCTestCase {
+  @MainActor func testSettingsToolbarEntry() {
+    let app = XCUIApplication()
+    app.launchArguments = ["--ui-testing"]
+    app.launch()
+    let settings = app.buttons["settings-button"]
+    XCTAssertTrue(settings.waitForExistence(timeout: 10))
+    XCTAssertLessThan(settings.frame.midX, app.frame.midX)
+    XCTAssertFalse(app.staticTexts["设置"].exists)
+    let screenshot = XCTAttachment(screenshot: app.screenshot())
+    screenshot.name = "Settings toolbar"
+    screenshot.lifetime = .keepAlways
+    add(screenshot)
+    settings.tap()
+    XCTAssertTrue(app.navigationBars["设置"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.buttons["个人资料"].exists)
+  }
+
   @MainActor func testFolderNavigationAndExpansion() {
     let app = XCUIApplication()
     app.launchArguments = ["--ui-testing"]

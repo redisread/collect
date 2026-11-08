@@ -150,6 +150,7 @@ export const articles = sqliteTable(
     starVersion: integer("star_version").notNull().default(0),
     laterVersion: integer("later_version").notNull().default(0),
     progressVersion: integer("progress_version").notNull().default(0),
+    contentVersion: integer("content_version").notNull().default(0),
     isExtracted: integer("is_extracted", { mode: "boolean" }).default(false),
     extractedAt: text("extracted_at"),
     // 阅读进度相关字段
@@ -455,3 +456,15 @@ export const expiredArticleUrls = sqliteTable("expired_article_urls", {
   feedId: text("feed_id").notNull().references(() => feeds.id, { onDelete: "cascade" }),
   url: text("url").notNull(),
 }, table => [uniqueIndex("expired_article_feed_url").on(table.feedId, table.url)]);
+
+// One latest change per entity, including deletion tombstones for offline clients.
+export const nativeChanges = sqliteTable("native_changes", {
+  sequence: integer("sequence").primaryKey({ autoIncrement: true }),
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  kind: text("kind", { enum: ["article", "feed", "folder", "preferences"] }).notNull(),
+  entityId: text("entity_id").notNull(),
+  deleted: integer("deleted", { mode: "boolean" }).notNull().default(false),
+}, table => [
+  uniqueIndex("native_changes_entity").on(table.userId, table.kind, table.entityId),
+  index("native_changes_cursor").on(table.userId, table.sequence),
+]);

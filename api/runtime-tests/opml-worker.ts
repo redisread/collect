@@ -1,3 +1,5 @@
+import { nativeSyncPage } from "../src/lib/native-sync";
+import { getDb } from "../src/db";
 // Test-only Worker. Never imported by the application entrypoint.
 import { createImportPreview, confirmImport, dispatchImportItems, getImportJob, consumeImportMessage } from "../src/services/OpmlImportService";
 import type { CloudflareEnv } from "../src/types";
@@ -6,6 +8,7 @@ import type { OpmlImportMessage } from "../src/services/OpmlImportService";
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.pathname === "/native-sync") return Response.json(await nativeSyncPage(getDb(env.DB), "runtime", Number(url.searchParams.get("after") ?? 0)));
     if (url.pathname === "/start") {
       const count = Number(url.searchParams.get("count"));
       const prefix = crypto.randomUUID();

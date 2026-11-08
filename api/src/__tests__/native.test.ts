@@ -65,3 +65,66 @@ it("extracts opted-in historical articles only when explicitly opened and preser
   const fallback = await (await request('/native/articles/a?extract=true')).json() as {data:{content:string}};
   expect(fallback.data.content).toContain('Fallback');
 });
+
+type SyncPage = { cursor: number; hasMore: boolean; articles: Array<{id:string; isRead:boolean; content?:string; contentVersion:number}>; feeds: Array<{id:string}>; folders: Array<{id:string}>; deleted: Array<{kind:string; id:string}>; preferences?: {articleRetentionDays:number} };
+async function pull(after = 0) {
+  const response = await request(`/native/sync?after=${after}`);
+  expect(response.status).toBe(200);
+  return ((await response.json()) as {data: SyncPage}).data;
+}
+it("bootstraps owned metadata, then returns no unchanged data", async () => {
+  const first = await pull();
+  expect(first.articles.map(a => a.id)).toEqual(['a']);
+  expect(first.articles[0].content).toBeUndefined();
+  expect(first.feeds.map(f => f.id)).toEqual(['feed']);
+  expect(first.preferences?.articleRetentionDays).toBe(30);
+  const second = await pull(first.cursor);
+  expect(second).toEqual({cursor:first.cursor, hasMore:false, articles:[], feeds:[], folders:[], deleted:[]});
+});
+it("coalesces edits and ignores feed scheduler updates and no-op writes", async () => {
+  const initial = await pull();
+  database.sqlite.exec("UPDATE feeds SET last_fetched_at=datetime('now'),last_etag='new' WHERE id='feed'; UPDATE articles SET is_read=is_read WHERE id='a';");
+  expect((await pull(initial.cursor)).cursor).toBe(initial.cursor);
+  database.sqlite.exec("UPDATE articles SET is_read=1 WHERE id='a'; UPDATE articles SET is_read=0 WHERE id='a'; UPDATE articles SET is_read=1 WHERE id='a';");
+  const updated = await pull(initial.cursor);
+  expect(updated.articles).toHaveLength(1);
+  expect(updated.articles[0].isRead).toBe(true);
+  expect(updated.feeds).toEqual([]);
+  expect(database.sqlite.prepare("SELECT count(*) AS n FROM native_changes WHERE kind='article' AND entity_id='a'").get().n).toBe(1);
+});
+it("delivers deletion tombstones including cascade deletions and safely deletes accounts", async () => {
+  const first = await pull();
+  database.sqlite.exec("PRAGMA foreign_keys=ON; DELETE FROM feeds WHERE id='feed';");
+  const next = await pull(first.cursor);
+  expect(next.deleted).toEqual(expect.arrayContaining([{kind:'article',id:'a'},{kind:'feed',id:'feed'}]));
+  expect(next.articles).toEqual([]);
+  database.sqlite.exec("DELETE FROM user WHERE id='other';");
+  expect(database.sqlite.prepare("SELECT count(*) AS n FROM native_changes WHERE user_id='other'").get().n).toBe(0);
+});
+it("continues keyset changes while earlier rows are edited between pages", async () => {
+  const insert = database.sqlite.prepare("INSERT INTO articles(id,user_id,feed_id,title,url) VALUES (?, 'owner','feed','Title',?)");
+  for (let i=0;i<230;i++) insert.run(`item-${i}`, `https://a.test/${i}`);
+  const first = await pull();
+  expect(first.hasMore).toBe(true);
+  const changedID = first.articles[0].id;
+  database.sqlite.prepare("UPDATE articles SET is_read=1 WHERE id=?").run(changedID);
+  const second = await pull(first.cursor);
+  expect(second.articles.find(a => a.id === changedID)?.isRead).toBe(true);
+  expect(second.hasMore).toBe(false);
+  expect(new Set([...first.articles,...second.articles].map(a => a.id)).size).toBe(231);
+});
+it("tracks content and settings changes and returns lightweight mutation receipts", async () => {
+  const first = await pull();
+  database.sqlite.exec("UPDATE articles SET content='<p>Changed</p>' WHERE id='a';");
+  const changed = await pull(first.cursor);
+  expect(changed.articles[0].contentVersion).toBe(1);
+  database.sqlite.exec("INSERT INTO user_preferences(id,user_id,article_retention_days) VALUES ('prefs','owner',60);");
+  const preferences = await pull(changed.cursor);
+  expect(preferences.preferences?.articleRetentionDays).toBe(60);
+  expect(preferences.articles.map(a => a.id)).toEqual(['a']);
+  const receipt = await (await change('isRead',true,0)).json() as {data: {content?:string; readVersion:number}};
+  expect(receipt.data.content).toBeUndefined();
+  expect(receipt.data.readVersion).toBe(1);
+  expect((await request('/native/sync?after=-1')).status).toBe(400);
+  expect((await request('/native/sync?after=bad')).status).toBe(400);
+});

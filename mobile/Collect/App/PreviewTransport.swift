@@ -17,10 +17,37 @@
       }
     }
 
+    private var syncSequence: Int64 = 1
+
     func send(_ request: URLRequest) async throws -> (Data, Int) {
       let path = request.url?.path ?? ""
       let data: Any
-      if path == "/api/settings" {
+      if path == "/api/native/sync" {
+        let after =
+          URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?.first(
+            where: { $0.name == "after" })?.value ?? "0"
+        var folderArticle = article
+        folderArticle["id"] = "folder-article"
+        folderArticle["feedId"] = "folder-feed"
+        folderArticle["title"] = "目录中的文章"
+        folderArticle["isRead"] = true
+        let changed = (Int64(after) ?? 0) < syncSequence
+        data = [
+          "cursor": syncSequence, "hasMore": false,
+          "articles": changed ? [article, folderArticle] : [],
+          "feeds": after == "0"
+            ? [
+              ["id": "feed", "title": "阅读笔记", "feedUrl": "https://example.com/rss"],
+              [
+                "id": "folder-feed", "title": "目录订阅", "feedUrl": "https://example.com/folder/rss",
+                "folderId": "test-folder",
+              ],
+            ] : [],
+          "folders": after == "0" ? [["id": "test-folder", "name": "测试目录"]] : [],
+          "deleted": [],
+          "preferences": ["articleRetentionDays": 30, "translationTargetLanguage": "zh-CN"],
+        ]
+      } else if path == "/api/settings" {
         data = ["articleRetentionDays": 30, "translationTargetLanguage": "zh-CN"]
       } else if path == "/api/feeds" {
         data = [
@@ -45,6 +72,7 @@
           let field = mutation["field"] as? String
         {
           article[field] = mutation["value"]
+          syncSequence += 1
           let names = [
             "isRead": "readVersion", "isStarred": "starVersion", "isReadLater": "laterVersion",
             "readingProgress": "progressVersion",

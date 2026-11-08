@@ -37,8 +37,6 @@ targets:
         CollectAppGroup: $(COLLECT_APP_GROUP)
         CFBundleURLTypes:
           - CFBundleURLSchemes: [collect]
-        UIBackgroundModes: [fetch]
-        BGTaskSchedulerPermittedIdentifiers: [com.example.collect.refresh]
     entitlements:
       path: Collect/Collect.entitlements
       properties:

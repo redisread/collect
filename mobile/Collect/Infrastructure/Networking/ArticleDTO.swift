@@ -2,6 +2,7 @@ import Foundation
 
 struct ArticleDTO: Codable, Identifiable, Sendable, Equatable {
   let id: String
+  var contentVersion: Int?
   var expiresAt: String?
   var isExtracted: Bool?
   var feedId: String

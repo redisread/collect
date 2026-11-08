@@ -48,11 +48,6 @@ struct LibraryView: View {
           } label: {
             Label("离线阅读", systemImage: "arrow.down.circle")
           }
-          NavigationLink {
-            SettingsView()
-          } label: {
-            Label("设置", systemImage: "gearshape")
-          }
           if !store.status.isEmpty { Text(store.status).font(.caption).foregroundStyle(.secondary) }
           if let error = store.error { Text(error).font(.caption).foregroundStyle(.red) }
           ForEach(Array(store.conflicts.enumerated()), id: \.offset) { _, text in
@@ -64,6 +59,15 @@ struct LibraryView: View {
       .scrollContentBackground(.hidden).background(Color("ReaderBackground"))
       .navigationTitle("Collect")
       .toolbar {
+        ToolbarItem(placement: .topBarLeading) {
+          NavigationLink {
+            SettingsView()
+          } label: {
+            Image(systemName: "gearshape")
+          }
+          .accessibilityLabel("设置")
+          .accessibilityIdentifier("settings-button")
+        }
         ToolbarItem(placement: .topBarTrailing) {
           Button("添加订阅", systemImage: "plus") { showAdd = true }
         }

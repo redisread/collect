@@ -23,9 +23,10 @@ struct FeedEditor: View {
             let body = try JSONSerialization.data(withJSONObject: [
               "autoExtract": autoExtract, "folderId": folder.isEmpty ? NSNull() : folder as Any,
             ])
-            let _: FeedDTO = try await store.api.request(
+            let updated: FeedDTO = try await store.api.request(
               "/api/feeds/\(feed.id)", method: "PUT", token: session.token, body: body)
-            await store.sync()
+            guard store.session?.token == session.token else { return }
+            try store.applyFeed(updated)
             dismiss()
           } catch { self.error = error.localizedDescription }
         }

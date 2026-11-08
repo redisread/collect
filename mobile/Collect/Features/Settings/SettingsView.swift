@@ -10,8 +10,8 @@ struct SettingsView: View {
   @State private var job: ImportJob?
   @State private var message: String?
   @State private var logout = false
+  @State private var language = "zh-CN"
   var body: some View {
-    @Bindable var store = store
     Form {
       Section("账号") {
         NavigationLink("个人资料") { ProfileSettingsView() }
@@ -25,7 +25,7 @@ struct SettingsView: View {
           Text("深色").tag("dark")
         }
         NavigationLink("文章保存期限") { RetentionSettingsView() }
-        Picker("翻译语言", selection: $store.language) {
+        Picker("翻译语言", selection: $language) {
           Text("简体中文").tag("zh-CN")
           Text("繁體中文").tag("zh-TW")
           Text("English").tag("en")
@@ -47,14 +47,17 @@ struct SettingsView: View {
       }
       if let message { Text(message).foregroundStyle(.secondary) }
     }.navigationTitle("设置")
-      .onChange(of: store.language) { _, value in
-        UserDefaults.standard.set(value, forKey: "translationLanguage")
+      .onAppear { language = store.language }
+      .onChange(of: language) { _, value in
+        guard value != store.language else { return }
         Task {
           guard let session = store.session else { return }
           do {
             let _: EmptyResponse = try await store.api.request(
               "/api/settings/translation", method: "PUT", token: session.token,
               body: JSONEncoder().encode(["targetLanguage": value]))
+            guard store.session?.token == session.token else { return }
+            try store.savePreferences(ReaderPreferences(articleRetentionDays: store.articleRetentionDays, translationTargetLanguage: value))
           } catch { message = error.localizedDescription }
         }
       }
@@ -108,7 +111,7 @@ struct SettingsView: View {
         guard let session = store.session else { return }
         job = try await store.api.request(
           "/api/opml/jobs/\(id)/confirm", method: "POST", token: session.token)
-        await store.sync()
+        message = "导入已开始，完成后下拉刷新订阅列表"
       } catch { message = error.localizedDescription }
     }
   }
@@ -117,7 +120,7 @@ struct SettingsView: View {
       do {
         guard let session = store.session else { return }
         job = try await store.api.request("/api/opml/jobs/\(id)", token: session.token)
-        if job?.status == "completed" { await store.sync() }
+        if job?.status == "completed" { message = "导入完成，请下拉刷新订阅列表" }
       } catch { message = error.localizedDescription }
     }
   }
