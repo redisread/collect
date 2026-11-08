@@ -35,6 +35,14 @@ class ArticlesNotifier extends StateNotifier<ArticlesState> {
 
   ArticlesNotifier(this.ref) : super(const ArticlesState(isLoading: true));
 
+  Future<Article> fetchArticle(String articleId) async {
+    final data = await ref.read(apiServiceProvider).getArticle(articleId);
+    final article = Article.fromJson(data['data'] as Map<String, dynamic>);
+    _updateArticle(articleId, isRead: article.isRead);
+    ref.invalidate(feedsProvider);
+    return article;
+  }
+
   /// 加载文章列表
   Future<void> loadArticles({String? feedId, bool uncategorized = false}) async {
     state = state.copyWith(isLoading: true, error: null);
@@ -83,8 +91,7 @@ class ArticlesNotifier extends StateNotifier<ArticlesState> {
 
       // 如果标记为收藏，自动缓存文章
       if (newStarredStatus) {
-        final articleData = await api.getArticle(articleId);
-        final fullArticle = Article.fromJson(articleData);
+        final fullArticle = await fetchArticle(articleId);
         await OfflineService.cacheArticle(fullArticle, fullArticle.content);
       } else {
         // 取消收藏时可选删除缓存
@@ -128,7 +135,8 @@ class ArticlesNotifier extends StateNotifier<ArticlesState> {
       await api.updateReadingProgress(articleId, progress: progress);
 
       // 乐观更新
-      _updateArticle(articleId, readingProgress: progress);
+      _updateArticle(articleId, readingProgress: progress, isRead: progress >= 95 ? true : null);
+      if (progress >= 95) ref.invalidate(feedsProvider);
 
       // 同时更新本地缓存
       await OfflineService.updateReadingProgress(articleId, progress: progress);

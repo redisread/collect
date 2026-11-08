@@ -8,7 +8,6 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/article.dart';
 import '../providers/article_provider.dart';
-import '../providers/auth_provider.dart';
 import '../providers/translation_provider.dart';
 import '../services/offline_service.dart';
 import '../widgets/reading_progress_bar.dart';
@@ -145,9 +144,7 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
 
     // 2. 尝试从服务器获取最新内容
     try {
-      final api = ref.read(apiServiceProvider);
-      final articleData = await api.getArticle(widget.articleId);
-      final freshArticle = Article.fromJson(articleData['data'] as Map<String, dynamic>);
+      final freshArticle = await ref.read(articlesNotifierProvider.notifier).fetchArticle(widget.articleId);
 
       setState(() {
         _cachedArticle = freshArticle;
@@ -190,6 +187,11 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
       widget.articleId,
       progress: progress,
     );
+    if (!mounted) return;
+    final current = ref.read(articlesNotifierProvider.notifier).getArticle(widget.articleId);
+    if (current != null && _cachedArticle?.isRead != current.isRead) {
+      setState(() => _cachedArticle = _cachedArticle?.copyWith(isRead: current.isRead));
+    }
   }
 
   /// 恢复阅读位置
@@ -877,9 +879,7 @@ $content
       // 如果文章没有内容，先获取详情
       Article articleToCache = article;
       if (article.content == null || article.content!.isEmpty) {
-        final api = ref.read(apiServiceProvider);
-        final articleData = await api.getArticle(article.id);
-        articleToCache = Article.fromJson(articleData['data'] as Map<String, dynamic>);
+        articleToCache = await ref.read(articlesNotifierProvider.notifier).fetchArticle(article.id);
       }
 
       await OfflineService.cacheArticle(articleToCache, articleToCache.content);
@@ -890,9 +890,12 @@ $content
   }
 
   /// 切换已读状态
-  void _toggleRead(String articleId, bool isRead) {
+  Future<void> _toggleRead(String articleId, bool isRead) async {
     final notifier = ref.read(articlesNotifierProvider.notifier);
-    notifier.toggleRead(articleId);
+    await notifier.toggleRead(articleId);
+    if (mounted && _cachedArticle?.id == articleId) {
+      setState(() => _cachedArticle = _cachedArticle?.copyWith(isRead: isRead));
+    }
   }
 
   /// 在浏览器中打开

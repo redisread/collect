@@ -18,6 +18,10 @@ class FakeApi extends ApiService {
   Future<Map<String, dynamic>> extractArticle(String id) async => {};
   @override
   Future<void> updateArticle(String id, Map<String, dynamic> updates) async {}
+  @override
+  Future<Map<String, dynamic>> getArticle(String id) async => {
+    'data': {'id': id, 'feedId': 'f', 'title': 'A', 'url': 'https://a.test', 'isRead': true}
+  };
 }
 
 void main() {
@@ -37,6 +41,8 @@ void main() {
     await notifier.loadArticles(uncategorized: true);
     await notifier.batchUpdate(['a'], 'markAsRead');
     await notifier.extractArticle('a');
+    await notifier.fetchArticle('a');
+    expect(container.read(articlesNotifierProvider).articles.single.isRead, isTrue);
     await notifier.toggleRead('a');
     await container.read(feedsProvider.future);
     expect(api.filters.every((value) => value), isTrue);
