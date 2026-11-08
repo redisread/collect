@@ -1,5 +1,6 @@
 import { parseFeedFromXML, type ParsedFeed } from "./parser";
 import type { SyncOptions, ParsedFeedWithMeta } from "../../services/FeedSyncService";
+import { fetchPublicFeed } from "./public-fetch";
 
 const MAX_RETRIES = 3;
 const TIMEOUT_MS = 10000;
@@ -39,17 +40,7 @@ export class RSSFetcher {
     attempt: number = 1
   ): Promise<FetchResult> {
     try {
-      const result = await Promise.race([
-        this.doFetch(feedUrl, options),
-        new Promise<FetchResult>((_, reject) =>
-          setTimeout(
-            () => reject(new Error(`Fetch timeout (${TIMEOUT_MS}ms)`)),
-            TIMEOUT_MS
-          )
-        ),
-      ]);
-
-      return result;
+      return await this.doFetch(feedUrl, options);
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
 
@@ -86,7 +77,7 @@ export class RSSFetcher {
       headers["If-Modified-Since"] = options.lastModified;
     }
 
-    const response = await fetch(feedUrl, {
+    const response = await fetchPublicFeed(feedUrl, {
       method: "GET",
       headers,
       // Cloudflare Workers supports AbortSignal.timeout
@@ -110,6 +101,7 @@ export class RSSFetcher {
     }
 
     if (!response.ok) {
+      await response.body?.cancel();
       return {
         success: false,
         error: `HTTP ${response.status}: ${response.statusText}`,

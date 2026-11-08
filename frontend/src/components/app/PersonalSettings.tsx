@@ -3,6 +3,7 @@ import { navigateWithinReader } from "@/lib/navigation";
 import { saveTranslationLanguage } from "@/lib/settings";
 import { SUPPORTED_LANGUAGES, useArticleStore } from "@/lib/store/articleStore";
 import { AiTranslationSettings } from "./AiTranslationSettings";
+import { OpmlImportSettings } from "./OpmlImportSettings";
 
 export function PersonalSettings() {
   const [language, setLanguage] = useState("");
@@ -72,6 +73,7 @@ export function PersonalSettings() {
         </div>}
       </form>
       <AiTranslationSettings />
+      <OpmlImportSettings />
     </div>
   </main>;
 }
