@@ -146,11 +146,13 @@ export const useFeedStore = create<FeedStore>((set, get) => ({
 	},
 
 	deleteFolder: async (folderId) => {
-		await fetch(`${API_BASE}/api/folders/${folderId}`, { method: "DELETE", credentials: "include" });
+		const response = await fetch(`${API_BASE}/api/folders/${folderId}`, { method: "DELETE", credentials: "include" });
+		if (!response.ok) { set({ moveStatus: "删除文件夹失败，请重试" }); return; }
 		set((state) => ({
 			folders: state.folders.filter((f) => f.id !== folderId),
 			feeds: state.feeds.map((f) => (f.folderId === folderId ? { ...f, folderId: null } : f)),
 		}));
+		if (get().selectedSource.type === "uncategorized") await useArticleStore.getState().fetchArticles(get().selectedSource);
 	},
 
 	renameFolder: async (folderId, name) => {

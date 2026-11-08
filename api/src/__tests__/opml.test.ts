@@ -18,6 +18,7 @@ const parsed: ParsedFeedWithMeta = { title: "Fetched title", description: "Feed"
 ] };
 it("treats a top-level 未分类 OPML folder as unfiled", () => {
   expect(parseOpml(file(`<outline text="未分类">${source("https://example.com/a")}</outline>`))[0].folderName).toBeUndefined();
+  expect(parseOpml(file(`<outline text="科技"><outline text="未分类">${source("https://example.com/a")}</outline></outline>`))[0].folderName).toBeUndefined();
 });
 beforeEach(() => {
   database = createTestD1();
