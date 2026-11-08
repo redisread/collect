@@ -114,7 +114,7 @@ export const feeds = sqliteTable(
 		updatedAt: text("updated_at").default(sql`(datetime('now'))`),
 	},
 	(table) => [
-		uniqueIndex("idx_feeds_url_user").on(table.url, table.userId),
+		uniqueIndex("idx_feeds_feed_url_user").on(table.feedUrl, table.userId),
 		index("idx_feeds_folder_id").on(table.folderId),
 		index("idx_feeds_user_id").on(table.userId),
 		index("idx_feeds_health_status").on(table.healthStatus),
@@ -167,6 +167,31 @@ export const articles = sqliteTable(
     index("idx_articles_user_published").on(table.userId, table.publishedAt),
   ]
 );
+
+export const opmlImportJobs = sqliteTable("opml_import_jobs", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  fileName: text("file_name").notNull(),
+  status: text("status").notNull().default("preview"),
+  createdAt: integer("created_at").notNull(),
+  confirmedAt: integer("confirmed_at"),
+}, table => [index("idx_opml_jobs_user_created").on(table.userId, table.createdAt)]);
+
+export const opmlImportItems = sqliteTable("opml_import_items", {
+  id: text("id").primaryKey(),
+  jobId: text("job_id").notNull().references(() => opmlImportJobs.id, { onDelete: "cascade" }),
+  position: integer("position").notNull(),
+  title: text("title").notNull(),
+  feedUrl: text("feed_url").notNull(),
+  siteUrl: text("site_url"),
+  folderName: text("folder_name"),
+  status: text("status").notNull(),
+  message: text("message"),
+  attempts: integer("attempts").notNull().default(0),
+  leaseToken: text("lease_token"),
+  leaseUntil: integer("lease_until").notNull().default(0),
+  nextDispatchAt: integer("next_dispatch_at").notNull().default(0),
+}, table => [index("idx_opml_items_job").on(table.jobId), index("idx_opml_items_dispatch").on(table.status, table.nextDispatchAt)]);
 
 // 智能文件夹表
 export const smartFolders = sqliteTable(

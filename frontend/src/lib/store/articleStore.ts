@@ -233,8 +233,7 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 					total: json.data.total,
 					page: 1,
 					hasMore: json.data.articles.length < json.data.total,
-					selectedArticleId: null,
-					selectedArticle: null,
+					...(reset ? { selectedArticleId: null, selectedArticle: null } : {}),
 				});
 			}
 			return true;

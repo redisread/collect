@@ -37,7 +37,7 @@ export async function enqueueFeedSyncMessages(
 }
 
 export async function consumeFeedSyncBatch(
-  batch: MessageBatch<FeedSyncMessage>,
+  batch: Pick<MessageBatch<FeedSyncMessage>, "messages">,
   syncFeed: (feedId: string) => Promise<FeedSyncOutcome>,
 ): Promise<void> {
   await Promise.all(batch.messages.map(async (message) => {

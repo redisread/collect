@@ -29,6 +29,13 @@
       "when": 1794109257622,
       "tag": "0003_orange_jack_flag",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1794111368208,
+      "tag": "0004_lonely_harpoon",
+      "breakpoints": true
     }
   ]
 }

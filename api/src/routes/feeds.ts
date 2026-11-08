@@ -7,6 +7,7 @@ import { feeds, articles, folders } from "../db/schema";
 import { authMiddleware } from "../middleware/auth";
 import { RSSFetcher } from "../lib/rss/fetcher";
 import { discoverFeedUrl } from "../lib/rss/parser";
+import { normalizeFeedUrl } from "../lib/rss/public-fetch";
 import type { CloudflareEnv } from "../types";
 
 const feedsRoute = new Hono<{ Bindings: CloudflareEnv; Variables: { userId: string } }>();
@@ -81,6 +82,7 @@ feedsRoute.post(
       // 尝试自动发现 Feed URL
       const discovered = await discoverFeedUrl(feedUrl);
       if (discovered) feedUrl = discovered;
+      feedUrl = normalizeFeedUrl(feedUrl);
 
       // 抓取并解析 Feed
       const fetcher = new RSSFetcher();
@@ -115,7 +117,10 @@ feedsRoute.post(
           lastFetchedAt: new Date().toISOString(),
           sortOrder: maxOrder,
         })
+        .onConflictDoNothing()
         .returning();
+
+      if (!feed) return c.json({ success: false, error: "该订阅源已存在" }, 409);
 
       // 保存文章
       if (parsed.articles.length > 0) {

@@ -1,4 +1,7 @@
 /** OPML 导入/导出工具 */
+import { parser } from "sax";
+
+export class OpmlParseError extends Error {}
 
 export interface OpmlFeed {
   title: string;
@@ -10,40 +13,36 @@ export interface OpmlFeed {
 /** 解析 OPML XML 文本，返回订阅源列表 */
 export function parseOpml(opmlXml: string): OpmlFeed[] {
   const feeds: OpmlFeed[] = [];
-
-  const folderPattern = /<outline[^>]+text=["']([^"']+)["'][^>]*(?!xmlUrl)[^>]*>([\s\S]*?)<\/outline>/gi;
-  const feedPattern = /<outline[^>]+xmlUrl=["']([^"']+)["'][^>]*(?:text=["']([^"']+)["'])?[^>]*(?:htmlUrl=["']([^"']+)["'])?[^>]*/gi;
-
-  let folderMatch;
-  while ((folderMatch = folderPattern.exec(opmlXml)) !== null) {
-    const folderName = folderMatch[1];
-    const folderContent = folderMatch[2];
-    let feedMatch;
-    feedPattern.lastIndex = 0;
-    while ((feedMatch = feedPattern.exec(folderContent)) !== null) {
-      feeds.push({
-        xmlUrl: feedMatch[1],
-        title: feedMatch[2] || feedMatch[1],
-        htmlUrl: feedMatch[3],
-        folderName,
-      });
+  if (new TextEncoder().encode(opmlXml).length > 2 * 1024 * 1024) throw new OpmlParseError("OPML 文件不能超过 2 MB");
+  const stack: { tag: string; folder?: string }[] = [];
+  let hasBody = false;
+  const xmlOptions = { position: true, strictEntities: true };
+  const xml = parser(true, xmlOptions);
+  xml.onerror = () => { throw new OpmlParseError("OPML XML 格式无效，请检查文件是否完整"); };
+  xml.ondoctype = () => { throw new OpmlParseError("不支持包含 DTD 的 OPML 文件"); };
+  xml.onsgmldeclaration = () => { throw new OpmlParseError("OPML 包含不支持的声明"); };
+  xml.onopentag = node => {
+    const tag = node.name.toLowerCase();
+    if (!stack.length && tag !== "opml") throw new OpmlParseError("文件根节点必须为 OPML");
+    if (stack.filter(item => item.tag === "outline").length >= 32) throw new OpmlParseError("文件夹层级过深，最多支持 32 层");
+    if (tag === "body" && stack.length === 1) hasBody = true;
+    let folder: string | undefined;
+    if (tag === "outline" && stack.some(item => item.tag === "body")) {
+      const attributes = Object.fromEntries(Object.entries(node.attributes).map(([key, value]) => [key.toLowerCase(), String(value)]));
+      const title = (attributes.text || attributes.title || "").trim();
+      if ("xmlurl" in attributes || attributes.type?.toLowerCase() === "rss") {
+        const folderName = stack.map(item => item.folder).filter(Boolean).join(" / ");
+        const xmlUrl = (attributes.xmlurl || "").trim();
+        if (xmlUrl.length > 2048 || title.length > 500 || folderName.length > 1000 || (attributes.htmlurl?.length ?? 0) > 2048) throw new OpmlParseError("订阅地址或名称过长");
+        feeds.push({ xmlUrl, title: title || xmlUrl || "未命名订阅", htmlUrl: attributes.htmlurl, folderName: folderName || undefined });
+        if (feeds.length > 1000) throw new OpmlParseError("每次最多导入 1000 个订阅源");
+      } else { folder = title; }
     }
-  }
-
-  const allFeedPattern = /<outline[^>]+xmlUrl=["']([^"']+)["'][^>]*(?:text=["']([^"']+)["'])?[^>]*/gi;
-  let allFeedMatch;
-  const existingUrls = new Set(feeds.map((f) => f.xmlUrl));
-  while ((allFeedMatch = allFeedPattern.exec(opmlXml)) !== null) {
-    const xmlUrl = allFeedMatch[1];
-    if (!existingUrls.has(xmlUrl)) {
-      feeds.push({
-        xmlUrl,
-        title: allFeedMatch[2] || xmlUrl,
-      });
-      existingUrls.add(xmlUrl);
-    }
-  }
-
+    stack.push({ tag, folder });
+  };
+  xml.onclosetag = () => { stack.pop(); };
+  xml.write(opmlXml.trim()).close();
+  if (!hasBody) throw new OpmlParseError("OPML 缺少 body 节点");
   return feeds;
 }
 
