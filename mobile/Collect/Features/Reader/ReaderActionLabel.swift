@@ -11,7 +11,9 @@ struct ReaderActionLabel: View {
         if processing {
           ProgressView().controlSize(.small)
         } else {
-          Image(systemName: systemImage).foregroundStyle(.secondary)
+          Image(systemName: systemImage)
+            .font(.system(size: 20))
+            .foregroundStyle(.secondary)
         }
       }
       .frame(width: 20)

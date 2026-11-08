@@ -34,6 +34,8 @@ final class CollectUITests: XCTestCase {
     let original = app.buttons["reader-mode-0"]
     if !original.isHittable { menu.swipeUp() }
     XCTAssertTrue(original.isHittable)
+    XCTAssertTrue(original.isSelected)
+    XCTAssertFalse(app.buttons["reader-mode-1"].isEnabled)
     let capture = XCTAttachment(screenshot: app.screenshot())
     capture.name = "Reader actions accessibility text"
     capture.lifetime = .keepAlways

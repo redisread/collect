@@ -112,6 +112,7 @@ struct ReaderActionsMenu: View {
     .accessibilityIdentifier("reader-actions-scroll")
     .scrollBounceBehavior(.basedOnSize)
     .frame(width: 304)
+    .frame(maxHeight: 500)
     .fixedSize(horizontal: false, vertical: true)
     .buttonStyle(.plain)
     .foregroundStyle(.primary)
