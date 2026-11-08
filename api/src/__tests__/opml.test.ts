@@ -16,6 +16,9 @@ const source = (url: string, title = "Feed") => `<outline text="${title}" xmlUrl
 const parsed: ParsedFeedWithMeta = { title: "Fetched title", description: "Feed", siteUrl: "https://example.com", faviconUrl: null, articles: [
   { title: "Article", url: "https://example.com/article", content: "<p>Content</p>", summary: "Content", author: "Author", imageUrl: null, publishedAt: null, guid: "article" },
 ] };
+it("treats a top-level 未分类 OPML folder as unfiled", () => {
+  expect(parseOpml(file(`<outline text="未分类">${source("https://example.com/a")}</outline>`))[0].folderName).toBeUndefined();
+});
 beforeEach(() => {
   database = createTestD1();
   database.sqlite.exec("INSERT INTO user(id,name,email,created_at,updated_at) VALUES ('owner','Owner','owner@test.invalid',0,0),('other','Other','other@test.invalid',0,0)");

@@ -78,6 +78,15 @@ describe("Folders API", () => {
   });
 
   describe("POST /api/folders", () => {
+    it("rejects the reserved folder name", async () => {
+      const res = await request("/api/folders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: " 未分类 " }) });
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects renaming to the reserved folder name", async () => {
+      const res = await request("/api/folders/1", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "未分类" }) });
+      expect(res.status).toBe(400);
+    });
     it("should create a new folder", async () => {
       const newFolder = {
         id: "folder-1",

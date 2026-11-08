@@ -114,18 +114,20 @@ class ApiService {
 
   Future<List<dynamic>> getArticles({
     String? feedId,
+    bool uncategorized = false,
     bool? starred,
     bool? readLater,
     int page = 1,
   }) async {
     final response = await _dio.get('/api/articles', queryParameters: {
       if (feedId != null) 'feedId': feedId,
+      if (uncategorized) 'uncategorized': 'true',
       if (starred != null) 'starred': starred,
       if (readLater != null) 'readLater': readLater,
       'page': page,
     });
     final data = response.data as Map<String, dynamic>;
-    return data['data'] as List<dynamic>;
+    return (data['data'] as Map<String, dynamic>)['articles'] as List<dynamic>;
   }
 
   /// 获取单个文章详情

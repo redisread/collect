@@ -39,6 +39,7 @@ foldersRoute.post(
     try {
       const userId = c.get("userId");
       const body = c.req.valid("json");
+      if (!body.name.trim() || body.name.trim() === "未分类") return c.json({ success: false, error: "文件夹名称不可用" }, 400);
       const db = getDb(c.env.DB);
 
       const existing = await db
@@ -95,6 +96,7 @@ foldersRoute.put("/:id", async (c) => {
       sortOrder?: number;
       isCollapsed?: boolean;
     };
+    if (body.name !== undefined && (!body.name.trim() || body.name.trim() === "未分类")) return c.json({ success: false, error: "文件夹名称不可用" }, 400);
 
     const db = getDb(c.env.DB);
     const [existing] = await db

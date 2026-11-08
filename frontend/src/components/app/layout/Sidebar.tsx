@@ -13,6 +13,7 @@ export function Sidebar() {
 	const [showAddFeed, setShowAddFeed] = useState(false);
 	const [showAddFolder, setShowAddFolder] = useState(false);
 	const [newFolderName, setNewFolderName] = useState("");
+	const [folderError, setFolderError] = useState("");
 
 	// 初始化加载数据
 	useEffect(() => {
@@ -23,6 +24,8 @@ export function Sidebar() {
 	const handleAddFolder = async (e: React.FormEvent) => {
 		e.preventDefault();
 		if (!newFolderName.trim()) return;
+		if (newFolderName.trim() === "未分类") { setFolderError("“未分类”是系统分组，请使用其他名称"); return; }
+		setFolderError("");
 		await addFolder(newFolderName.trim());
 		setNewFolderName("");
 		setShowAddFolder(false);
@@ -118,6 +121,7 @@ export function Sidebar() {
 							"outline-none"
 						)}
 					/>
+					{folderError && <p role="alert" className="text-xs text-red-600">{folderError}</p>}
 				</form>
 			)}
 

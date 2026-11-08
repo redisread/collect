@@ -36,11 +36,11 @@ class ArticlesNotifier extends StateNotifier<ArticlesState> {
   ArticlesNotifier(this.ref) : super(const ArticlesState(isLoading: true));
 
   /// 加载文章列表
-  Future<void> loadArticles({String? feedId}) async {
+  Future<void> loadArticles({String? feedId, bool uncategorized = false}) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
       final api = ref.read(apiServiceProvider);
-      final data = await api.getArticles(feedId: feedId);
+      final data = await api.getArticles(feedId: feedId, uncategorized: uncategorized);
       final articles =
           data.map((e) => Article.fromJson(e as Map<String, dynamic>)).toList();
       state = state.copyWith(articles: articles, isLoading: false);
@@ -172,7 +172,8 @@ final articlesNotifierProvider =
 
   // 监听选中的 feed 变化，自动刷新文章列表
   final selectedFeedId = ref.watch(selectedFeedIdProvider);
-  notifier.loadArticles(feedId: selectedFeedId);
+  final uncategorized = ref.watch(uncategorizedSelectedProvider);
+  notifier.loadArticles(feedId: selectedFeedId, uncategorized: uncategorized);
 
   return notifier;
 });

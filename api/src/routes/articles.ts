@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { eq, and, desc, asc, sql, inArray, like, or } from "drizzle-orm";
+import { eq, and, desc, asc, sql, inArray, like, or, isNull } from "drizzle-orm";
 import { getDb, type DB } from "../db";
 import { articles, feeds, readingStats } from "../db/schema";
 import type { Article } from "../db/schema";
@@ -69,11 +69,11 @@ articlesRoute.get("/", async (c) => {
         .where(and(eq(feeds.id, feedId), eq(feeds.userId, userId)));
       if (!feed) return c.json({ success: true, data: { articles: [], total: 0, page, pageSize } });
       userFeedIds = [feed.id];
-    } else if (folderId) {
+    } else if (folderId || c.req.query("uncategorized") === "true") {
       const folderFeeds = await db
         .select({ id: feeds.id })
         .from(feeds)
-        .where(and(eq(feeds.folderId, folderId), eq(feeds.userId, userId)));
+        .where(and(folderId ? eq(feeds.folderId, folderId) : isNull(feeds.folderId), eq(feeds.userId, userId)));
       if (folderFeeds.length === 0) return c.json({ success: true, data: { articles: [], total: 0, page, pageSize } });
       userFeedIds = folderFeeds.map((f) => f.id);
     } else {

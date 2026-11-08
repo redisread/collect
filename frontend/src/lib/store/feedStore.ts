@@ -7,6 +7,7 @@ const API_BASE = "";
 
 // Re-export SelectedSource from types.ts for convenience
 export type SelectedSource =
+	| { type: "uncategorized" }
 	| { type: "all" }
 	| { type: "starred" }
 	| { type: "read_later" }
@@ -125,7 +126,7 @@ export const useFeedStore = create<FeedStore>((set, get) => ({
 			const json = await res.json() as { success: boolean; data: FeedWithUnreadCount };
 			if (!res.ok || !json.success) throw new Error("移动失败");
 			set({ moveStatus: `已移至${get().folders.find(folder => folder.id === folderId)?.name ?? "未分类"}` });
-			if (get().selectedSource.type === "folder") await useArticleStore.getState().fetchArticles(get().selectedSource);
+			if (["folder", "uncategorized"].includes(get().selectedSource.type)) await useArticleStore.getState().fetchArticles(get().selectedSource);
 		} catch {
 			set(state => ({ moveStatus: "移动失败，已恢复原位置，请重试", feeds: state.feeds.map(item => item.id === feedId ? { ...item, folderId: previousFolder } : item) }));
 		} finally { set({ movingFeedId: null }); }

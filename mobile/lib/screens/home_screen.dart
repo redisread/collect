@@ -152,10 +152,22 @@ class HomeScreen extends ConsumerWidget {
             ),
           ),
           SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (ctx, i) => FeedListTile(feed: feeds[i]),
-              childCount: feeds.length,
-            ),
+            delegate: SliverChildListDelegate([
+              ...feeds.where((feed) => feed.folderId != null).map((feed) => FeedListTile(feed: feed)),
+              ExpansionTile(
+                initiallyExpanded: true,
+                leading: const Icon(Icons.folder_outlined),
+                title: const Text('未分类'),
+                subtitle: Text('${feeds.where((feed) => feed.folderId == null).fold<int>(0, (sum, feed) => sum + feed.unreadCount)} 篇未读'),
+                children: [
+                  ListTile(title: const Text('查看全部文章'), onTap: () {
+                    ref.read(selectedFeedIdProvider.notifier).state = null;
+                    ref.read(uncategorizedSelectedProvider.notifier).state = true;
+                  }),
+                  ...feeds.where((feed) => feed.folderId == null).map((feed) => FeedListTile(feed: feed)),
+                ],
+              ),
+            ]),
           ),
         ],
       ),
@@ -270,6 +282,6 @@ class HomeScreen extends ConsumerWidget {
   Future<void> _refreshArticles(WidgetRef ref) async {
     final notifier = ref.read(articlesNotifierProvider.notifier);
     final selectedFeedId = ref.read(selectedFeedIdProvider);
-    await notifier.loadArticles(feedId: selectedFeedId);
+    await notifier.loadArticles(feedId: selectedFeedId, uncategorized: ref.read(uncategorizedSelectedProvider));
   }
 }
