@@ -286,8 +286,8 @@ export function ArticleReader() {
 	const hasTranslation = !!translation && (translation.completed === undefined || translation.completed > 0);
 	const hasContent = !!selectedArticle?.content;
 	const duplicateCover = useMemo(() => hasMatchingLeadImage(
-		selectedArticle?.content ?? "", selectedArticle?.imageUrl, selectedArticle?.url,
-	), [selectedArticle?.content, selectedArticle?.imageUrl, selectedArticle?.url]);
+		selectedArticle?.content ?? "", selectedArticle?.imageUrl,
+	), [selectedArticle?.content, selectedArticle?.imageUrl]);
 
 	useEffect(() => {
 		const changedArticle = viewArticleId.current !== selectedArticle?.id;

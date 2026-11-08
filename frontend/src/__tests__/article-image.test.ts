@@ -11,3 +11,14 @@ it("keeps a cover when the first image differs or content is empty", () => {
   expect(hasMatchingLeadImage("<p>正文</p>", "https://example.com/cover.jpg")).toBe(false);
   expect(hasMatchingLeadImage('<img src="javascript:bad">', "javascript:bad")).toBe(false);
 });
+
+it("compares relative images against the reader page origin used by the browser", () => {
+  const html = '<img src="/cover.jpg">';
+  const rendered = document.createElement("div");
+  rendered.innerHTML = html;
+  const actualImageUrl = rendered.querySelector("img")!.src;
+  expect(hasMatchingLeadImage(html, actualImageUrl)).toBe(true);
+  expect(hasMatchingLeadImage(html, "https://publisher.test/cover.jpg")).toBe(false);
+  expect(hasMatchingLeadImage(html, "https://publisher.test/cover.jpg", "https://collect.test/")).toBe(false);
+  expect(hasMatchingLeadImage(html, "https://collect.test/cover.jpg", "https://collect.test/")).toBe(true);
+});
