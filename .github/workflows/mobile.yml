@@ -5,7 +5,7 @@ on:
     branches: [main]
     paths:
       - "mobile/**"
-      - ".github/workflows/mobile.yml
+      - ".github/workflows/mobile.yml"
   push:
     branches: [main]
     paths:
