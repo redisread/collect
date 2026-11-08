@@ -53,11 +53,11 @@ struct StoreTests {
       token: "test", account: Account(id: "owner", name: "Owner", email: "test@example.invalid"))
     store.cachePaused = true
     await store.sync()
-    #expect(store.articles.count == 1)
+    #expect(Set(store.articles.map(\.id)) == ["sample", "folder-article"])
     store.change("sample", field: .isStarred, value: 1)
     await store.sync()
     #expect(try container.mainContext.fetchCount(FetchDescriptor<PendingChange>()) == 0)
-    #expect(store.articles.first?.isStarred == true)
+    #expect(store.articles.first(where: { $0.id == "sample" })?.isStarred == true)
   }
 }
 

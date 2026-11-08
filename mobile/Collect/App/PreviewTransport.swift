@@ -23,11 +23,22 @@
       if path == "/api/settings" {
         data = ["articleRetentionDays": 30, "translationTargetLanguage": "zh-CN"]
       } else if path == "/api/feeds" {
-        data = [["id": "feed", "title": "阅读笔记", "feedUrl": "https://example.com/rss"]]
+        data = [
+          ["id": "feed", "title": "阅读笔记", "feedUrl": "https://example.com/rss"],
+          [
+            "id": "folder-feed", "title": "目录订阅", "feedUrl": "https://example.com/folder/rss",
+            "folderId": "test-folder",
+          ],
+        ]
       } else if path == "/api/folders" {
-        data = [[String: String]]()
+        data = [["id": "test-folder", "name": "测试目录", "order": 0]]
       } else if path == "/api/native/articles" {
-        data = ["articles": [article], "next": NSNull()]
+        var folderArticle = article
+        folderArticle["id"] = "folder-article"
+        folderArticle["feedId"] = "folder-feed"
+        folderArticle["title"] = "目录中的文章"
+        folderArticle["isRead"] = true
+        data = ["articles": [article, folderArticle], "next": NSNull()]
       } else if path == "/api/native/articles/sample" {
         if request.httpMethod == "PATCH", let body = request.httpBody,
           let mutation = try JSONSerialization.jsonObject(with: body) as? [String: Any],

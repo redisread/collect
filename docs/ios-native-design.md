@@ -75,3 +75,10 @@ mobile/
 - [Reeder](https://reederapp.com/)
 - [Apple 的 SwiftUI WebKit 示例](https://developer.apple.com/documentation/webkit/building-a-cross-platform-web-browser)
 - [离线缓存与 Live Activity 调研](ios-offline-live-activity-research.md)
+
+### 目录直接导航
+
+- 点击目录图标、名称或未读数直接打开该目录的文章列表，未分类采用相同交互。
+- 右侧独立箭头只展开或收起订阅源，点击订阅源仍直接查看其文章。
+- 不再显示“查看文件夹文章”或“查看未分类文章”入口行。
+- 保留目录和订阅源的未读数，以及长按管理文件夹、管理订阅、移动订阅和全部标为已读。
