@@ -16,8 +16,8 @@ struct ProfileSettingsView: View {
   private var cropped: CGImage? {
     guard let source else { return nil }
     let side = CGFloat(min(source.width, source.height))
-    let x = (CGFloat(source.width) - side) * CGFloat(position)
-    let y = (CGFloat(source.height) - side) * CGFloat(position)
+    let x = ((CGFloat(source.width) - side) * CGFloat(position)).rounded(.down)
+    let y = ((CGFloat(source.height) - side) * CGFloat(position)).rounded(.down)
     return source.cropping(to: CGRect(x: x, y: y, width: side, height: side))
   }
   var body: some View {
