@@ -1,3 +1,4 @@
+import { FeedFetchError } from "../lib/rss/feed-error";
 import { and, asc, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import { getDb } from "../db";
 import { feeds, opmlImportItems, opmlImportJobs } from "../db/schema";
@@ -8,6 +9,21 @@ import type { ParsedFeed } from "../lib/rss/parser";
 import type { CloudflareEnv } from "../types";
 
 export interface OpmlImportMessage { source: "opml-import"; itemId: string }
+export class ImportRetry extends Error {
+  constructor(readonly delaySeconds: number, readonly code: string) { super(code); }
+}
+
+export async function consumeImportMessage(env: CloudflareEnv, message: Pick<Message<OpmlImportMessage>, "body" | "ack" | "retry">,
+  fetcher?: Pick<RSSFetcher, "fetch">) {
+  try { await processImportItem(env, message.body.itemId, fetcher); message.ack(); }
+  catch (error) {
+    const retry = error instanceof ImportRetry ? error : new ImportRetry(60, "storage_or_runtime");
+    console.warn(JSON.stringify({ event: "opml_item_retry", itemId: message.body.itemId,
+      stage: "consume", errorCode: retry.code, delaySeconds: retry.delaySeconds }));
+    message.retry({ delaySeconds: retry.delaySeconds });
+  }
+}
+
 type Item = typeof opmlImportItems.$inferSelect;
 
 function canonicalOrOriginal(url: string) {
@@ -88,6 +104,11 @@ export async function finishImportJobs(env: CloudflareEnv) {
 export async function dispatchImportItems(env: CloudflareEnv, jobId?: string) {
   const db = getDb(env.DB);
   const now = Date.now();
+  const backlog = await env.DB.prepare(`SELECT COUNT(*) AS pending, MIN(j.confirmed_at) AS oldest
+    FROM opml_import_items i JOIN opml_import_jobs j ON j.id=i.job_id
+    WHERE j.status='running' AND i.status IN ('pending','processing')`).first<{ pending: number; oldest: number | null }>();
+  console.log(JSON.stringify({ event: "opml_backlog", pending: backlog?.pending ?? 0,
+    oldestJobAgeMs: backlog?.oldest == null ? 0 : Math.max(0, now - backlog.oldest) }));
   const due = await db.select({ id: opmlImportItems.id }).from(opmlImportItems)
     .innerJoin(opmlImportJobs, eq(opmlImportJobs.id, opmlImportItems.jobId))
     .where(and(eq(opmlImportJobs.status, "running"), inArray(opmlImportItems.status, ["pending", "processing"]),
@@ -98,7 +119,13 @@ export async function dispatchImportItems(env: CloudflareEnv, jobId?: string) {
     // One JSON parameter for IDs leaves room for the timestamp under D1's 100-parameter limit.
     await db.update(opmlImportItems).set({ nextDispatchAt: now + 300_000 })
       .where(sql`${opmlImportItems.id} IN (SELECT value FROM json_each(${JSON.stringify(batch.map(item => item.id))}))`);
-    await env.FEED_SYNC_QUEUE.sendBatch(batch.map(item => ({ body: { source: "opml-import", itemId: item.id }, contentType: "json" as const })));
+    try {
+      await env.FEED_SYNC_QUEUE.sendBatch(batch.map(item => ({ body: { source: "opml-import", itemId: item.id }, contentType: "json" as const })));
+      console.log(JSON.stringify({ event: "opml_batch_dispatched", stage: "queue_send", batchSize: batch.length, durationMs: Date.now() - now }));
+    } catch (error) {
+      console.error(JSON.stringify({ event: "opml_dispatch_failed", stage: "queue_send", errorCode: "queue_unavailable", batchSize: batch.length }));
+      throw error;
+    }
   }
   await finishImportJobs(env);
 }
@@ -146,12 +173,13 @@ export async function processImportItem(env: CloudflareEnv, id: string, fetcher:
   if (!item || !["pending", "processing"].includes(item.status)) { await finishImportJobs(env); return; }
   const job = await db.select().from(opmlImportJobs).where(and(eq(opmlImportJobs.id, item.jobId), eq(opmlImportJobs.status, "running"))).get();
   if (!job) return;
+  if (item.leaseUntil > Date.now()) throw new ImportRetry(Math.max(1, Math.ceil((item.leaseUntil - Date.now()) / 1000)), "lease_wait");
   const token = crypto.randomUUID();
   const claimed = await db.update(opmlImportItems).set({ status: "processing", leaseToken: token, leaseUntil: Date.now() + 120_000,
     attempts: sql`${opmlImportItems.attempts} + 1` }).where(and(eq(opmlImportItems.id, id),
       inArray(opmlImportItems.status, ["pending", "processing"]), lt(opmlImportItems.leaseUntil, Date.now()))).returning();
   if (!claimed.length) return;
-  if (item.attempts >= 3) {
+  if (claimed[0].attempts > 3) {
     await db.update(opmlImportItems).set({ status: "failed", message: "后台处理多次失败，请重新导入此订阅", leaseToken: null, leaseUntil: 0 })
       .where(and(eq(opmlImportItems.id, id), eq(opmlImportItems.leaseToken, token)));
     await finishImportJobs(env); return;
@@ -163,9 +191,24 @@ export async function processImportItem(env: CloudflareEnv, id: string, fetcher:
         .where(and(eq(opmlImportItems.id, id), eq(opmlImportItems.leaseToken, token)));
     } else {
       let parsed: ParsedFeed;
-      try { parsed = await fetcher.fetch(item.feedUrl); }
-      catch {
-        await db.update(opmlImportItems).set({ status: "failed", message: "抓取失败，请检查订阅地址或稍后重新导入", leaseToken: null, leaseUntil: 0 })
+      try { parsed = await fetcher.fetch(item.feedUrl, { maxAttempts: 1 }); }
+      catch (error) {
+        const failure = error instanceof FeedFetchError ? error : new FeedFetchError("invalid_feed", false);
+        const attempt = claimed[0].attempts;
+        if (failure.retryable && attempt < 3) {
+          const delay = Math.max(failure.retryAfterSeconds, 60 * 2 ** (attempt - 1));
+          const due = Date.now() + delay * 1000;
+          await db.update(opmlImportItems).set({ status: "pending", message: "暂时无法抓取，稍后自动重试",
+            leaseToken: null, leaseUntil: due, nextDispatchAt: due })
+            .where(and(eq(opmlImportItems.id, id), eq(opmlImportItems.leaseToken, token)));
+          console.warn(JSON.stringify({ event: "opml_fetch_retry", itemId: id, jobId: item.jobId,
+            stage: "fetch", errorCode: failure.code, attempt, delaySeconds: delay }));
+          throw new ImportRetry(delay, failure.code);
+        }
+        console.warn(JSON.stringify({ event: "opml_item_failed", itemId: id, jobId: item.jobId,
+          stage: "fetch", errorCode: failure.code, attempt }));
+        await db.update(opmlImportItems).set({ status: "failed", message: failure.retryable
+          ? "多次抓取失败，请稍后重新导入" : "订阅地址或内容无法读取，请检查后重新导入", leaseToken: null, leaseUntil: 0 })
           .where(and(eq(opmlImportItems.id, id), eq(opmlImportItems.leaseToken, token)));
         await finishImportJobs(env); return;
       }
@@ -173,6 +216,9 @@ export async function processImportItem(env: CloudflareEnv, id: string, fetcher:
     }
     await finishImportJobs(env);
   } catch (error) {
+    if (error instanceof ImportRetry) throw error;
+    console.error(JSON.stringify({ event: "opml_item_error", itemId: id, jobId: item.jobId,
+      stage: "persist", errorCode: "storage_or_runtime", attempt: claimed[0].attempts }));
     await db.update(opmlImportItems).set({ status: "pending", leaseToken: null, leaseUntil: 0 })
       .where(and(eq(opmlImportItems.id, id), eq(opmlImportItems.leaseToken, token)));
     throw error;

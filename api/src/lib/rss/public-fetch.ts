@@ -1,12 +1,14 @@
+import { FeedFetchError } from "./feed-error";
 import { isIP } from "node:net";
 import { isPublicAddress } from "../public-address";
 
 export function normalizeFeedUrl(value: string): string {
-  const url = new URL(value.trim());
+  let url: URL;
+  try { url = new URL(value.trim()); } catch { throw new FeedFetchError("blocked_feed", false, 60, "订阅地址必须指向公网"); }
   if (!["http:", "https:"].includes(url.protocol) || url.username || url.password ||
     isIP(url.hostname) || url.hostname.includes(":") || !url.hostname.includes(".") ||
     /\.(localhost|local|internal|test|invalid)$/.test(url.hostname) || url.hostname.endsWith(".")) {
-    throw new Error("订阅地址必须是公网 HTTP 或 HTTPS 地址");
+    throw new FeedFetchError("blocked_feed", false, 60, "订阅地址必须指向公网");
   }
   url.hash = "";
   return url.toString();
@@ -22,7 +24,7 @@ async function validateHost(host: string, signal?: AbortSignal | null) {
     if (data.Status !== 0) throw new Error("订阅域名解析失败");
     return (data.Answer ?? []).filter(answer => answer.type === 1 || answer.type === 28).map(answer => answer.data);
   }));
-  if (!answers.flat().length || answers.flat().some(address => !isPublicAddress(address))) throw new Error("订阅地址必须指向公网");
+  if (!answers.flat().length || answers.flat().some(address => !isPublicAddress(address))) throw new FeedFetchError("blocked_feed", false, 60, "订阅地址必须指向公网");
 }
 
 /** Re-check redirect destinations and bound decompressed feed bodies. */
@@ -34,7 +36,7 @@ export async function fetchPublicFeed(input: string, options: RequestInit): Prom
     if ([301, 302, 303, 307, 308].includes(response.status)) {
       const location = response.headers.get("Location");
       await response.body?.cancel();
-      if (!location || redirects === 5) throw new Error("订阅地址重定向过多或无效");
+      if (!location || redirects === 5) throw new FeedFetchError("blocked_feed", false, 60, "订阅地址必须指向公网");
       url = normalizeFeedUrl(new URL(location, url).href);
       continue;
     }
@@ -47,7 +49,7 @@ export async function fetchPublicFeed(input: string, options: RequestInit): Prom
         const { value, done } = await reader.read();
         if (done) break;
         size += value.length;
-        if (size > 5 * 1024 * 1024) throw new Error("订阅源内容超过 5 MB");
+        if (size > 5 * 1024 * 1024) throw new FeedFetchError("blocked_feed", false, 60, "订阅源内容超过 5 MB");
         chunks.push(value);
       }
     } finally { await reader.cancel(); }
@@ -59,5 +61,5 @@ export async function fetchPublicFeed(input: string, options: RequestInit): Prom
     headers.delete("Content-Length");
     return new Response(content, { status: response.status, headers });
   }
-  throw new Error("订阅地址重定向失败");
+  throw new FeedFetchError("blocked_feed", false, 60, "订阅地址必须指向公网");
 }

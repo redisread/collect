@@ -1,3 +1,4 @@
+import { FeedFetchError, retryAfterSeconds } from "./feed-error";
 import { parseFeedFromXML, type ParsedFeed } from "./parser";
 import type { SyncOptions, ParsedFeedWithMeta } from "../../services/FeedSyncService";
 import { fetchPublicFeed } from "./public-fetch";
@@ -20,9 +21,9 @@ export class RSSFetcher {
    */
   async fetch(
     feedUrl: string,
-    options: SyncOptions = {}
+    options: SyncOptions & { maxAttempts?: number } = {}
   ): Promise<ParsedFeedWithMeta> {
-    const result = await this.fetchWithRetry(feedUrl, options);
+    const result = await this.fetchWithRetry(feedUrl, options, 1, options.maxAttempts ?? MAX_RETRIES);
 
     if (!result.success) {
       throw new Error(result.error || "Failed to fetch feed");
@@ -37,22 +38,21 @@ export class RSSFetcher {
   private async fetchWithRetry(
     feedUrl: string,
     options: SyncOptions,
-    attempt: number = 1
+    attempt: number = 1,
+    maxAttempts = MAX_RETRIES
   ): Promise<FetchResult> {
     try {
       return await this.doFetch(feedUrl, options);
     } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err));
+      const error = err instanceof FeedFetchError ? err : new FeedFetchError("network", true);
 
-      if (attempt < MAX_RETRIES) {
+      // HTTP backoff belongs to the queue consumer; keep inline retries for network errors only.
+      if (error.code === "network" && attempt < maxAttempts) {
         await this.delay(RETRY_DELAY_MS * attempt);
-        return this.fetchWithRetry(feedUrl, options, attempt + 1);
+        return this.fetchWithRetry(feedUrl, options, attempt + 1, maxAttempts);
       }
 
-      return {
-        success: false,
-        error: `Failed after ${MAX_RETRIES} attempts: ${error.message}`,
-      };
+      throw error;
     }
   }
 
@@ -102,10 +102,9 @@ export class RSSFetcher {
 
     if (!response.ok) {
       await response.body?.cancel();
-      return {
-        success: false,
-        error: `HTTP ${response.status}: ${response.statusText}`,
-      };
+      const retryable = response.status === 408 || response.status === 429 || response.status >= 500;
+      throw new FeedFetchError(retryable ? "http_transient" : "http_permanent", retryable,
+        retryAfterSeconds(response.headers.get("Retry-After")));
     }
 
     // Get cache-related headers
@@ -116,14 +115,12 @@ export class RSSFetcher {
     const xmlText = await response.text();
 
     if (!xmlText.trim()) {
-      return {
-        success: false,
-        error: "Empty response body",
-      };
+      throw new FeedFetchError("invalid_feed", false);
     }
 
     // Parse the feed
-    const parsed = await parseFeedFromXML(xmlText);
+    let parsed: ParsedFeed;
+    try { parsed = await parseFeedFromXML(xmlText); } catch { throw new FeedFetchError("invalid_feed", false); }
 
     // Calculate content hash for additional change detection
     const hash = this.hashContent(xmlText);

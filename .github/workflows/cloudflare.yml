@@ -35,6 +35,8 @@ jobs:
         run: pnpm --filter api lint
       - name: Test API
         run: pnpm --filter api test
+      - name: Test OPML in Workers runtime
+        run: pnpm --filter api test:runtime
       - name: Type-check frontend
         run: pnpm --filter frontend type-check
       - name: Test frontend
