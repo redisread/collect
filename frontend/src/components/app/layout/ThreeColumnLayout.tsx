@@ -6,6 +6,7 @@ import { Sidebar } from "./Sidebar";
 import { ArticleList } from "./ArticleList";
 import { ArticleDetail } from "./ArticleDetail";
 import { cn } from "@/lib/utils/cn";
+import { navigateWithinReader } from "@/lib/navigation";
 
 const MIN_SIDEBAR_WIDTH = 180;
 const MAX_SIDEBAR_WIDTH = 320;
@@ -88,10 +89,11 @@ export function ThreeColumnLayout() {
 				(isDraggingSidebar || isDraggingList) && "select-none cursor-col-resize"
 			)}
 		>
-			<div className="flex shrink-0 items-center gap-2 border-b border-[var(--border-light)] px-3 py-2 lg:hidden">
+			<div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--border-light)] px-3 py-2 lg:hidden">
 				<img src="/collect.svg" width="24" height="24" alt="" />
 				<span className="mr-auto text-sm font-semibold">Collect</span>
 				<button className="min-h-10 rounded-lg px-3 text-sm" aria-expanded={showSources} onClick={() => setShowSources(!showSources)}>订阅源</button>
+				<a href="/settings" onClick={navigateWithinReader} className="flex min-h-11 items-center rounded-lg px-2 text-sm hover:bg-[var(--bg-card-hover)]">个人设置</a>
 				{selectedArticleId && <button className="min-h-10 rounded-lg px-3 text-sm" onClick={() => { setShowSources(false); void useArticleStore.getState().selectArticle(null); }}>返回列表</button>}
 			</div>
 			{/* 侧边栏 */}

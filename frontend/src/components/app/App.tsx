@@ -23,7 +23,10 @@ export default function App({ initialPage = "reader" }: { initialPage?: "reader"
 
   useEffect(() => {
     document.title = page === "settings" ? "个人设置 · Collect" : "Collect RSS Reader";
-    if (page === "reader") document.querySelector<HTMLElement>('a[href="/settings"]')?.focus();
+    if (page === "reader") {
+      Array.from(document.querySelectorAll<HTMLElement>('a[href="/settings"]'))
+        .find(link => link.getClientRects().length > 0)?.focus();
+    }
   }, [page]);
 
   useEffect(() => {
