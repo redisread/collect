@@ -1,0 +1,1 @@
+ALTER TABLE `user_preferences` ADD `translation_target_language` text DEFAULT 'zh-CN' NOT NULL;

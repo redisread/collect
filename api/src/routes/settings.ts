@@ -3,7 +3,8 @@ import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { getDb } from "../db";
-import { user } from "../db/schema";
+import { user, userPreferences } from "../db/schema";
+import { DEFAULT_TARGET_LANG, SUPPORTED_LANG_CODES } from "../config/languages";
 import { authMiddleware } from "../middleware/auth";
 import type { CloudflareEnv } from "../types";
 
@@ -24,9 +25,13 @@ app.get("/", authMiddleware, async (c) => {
       return c.json({ success: false, error: "User not found" }, 404);
     }
 
+    const preference = await db.select({ targetLanguage: userPreferences.translationTargetLanguage })
+      .from(userPreferences).where(eq(userPreferences.userId, userId)).get();
+
     return c.json({
       success: true,
       data: {
+        translationTargetLanguage: preference?.targetLanguage ?? DEFAULT_TARGET_LANG,
         emailDigest: {
           enabled: u.emailDigestEnabled ?? false,
           frequency: u.emailDigestFrequency || "daily",
@@ -39,6 +44,20 @@ app.get("/", authMiddleware, async (c) => {
     const errorMessage = err instanceof Error ? err.message : String(err);
     return c.json({ success: false, error: errorMessage }, 500);
   }
+});
+
+app.put("/translation", authMiddleware, zValidator("json", z.object({
+  targetLanguage: z.string().refine(value => SUPPORTED_LANG_CODES.has(value), "不支持的翻译语言"),
+})), async c => {
+  const db = getDb(c.env.DB);
+  const userId = c.get("userId");
+  const { targetLanguage } = c.req.valid("json");
+  await db.insert(userPreferences).values({ userId, translationTargetLanguage: targetLanguage })
+    .onConflictDoUpdate({
+      target: userPreferences.userId,
+      set: { translationTargetLanguage: targetLanguage, updatedAt: new Date().toISOString() },
+    });
+  return c.json({ success: true, data: { translationTargetLanguage: targetLanguage } });
 });
 
 // 更新邮件摘要设置

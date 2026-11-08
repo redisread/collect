@@ -300,6 +300,7 @@ export const userPreferences = sqliteTable(
     fontSize: integer("font_size").default(16),
     showImages: integer("show_images", { mode: "boolean" }).default(true),
     autoMarkAsRead: integer("auto_mark_as_read", { mode: "boolean" }).default(false),
+    translationTargetLanguage: text("translation_target_language").notNull().default("zh-CN"),
     createdAt: text("created_at").default(sql`(datetime('now'))`),
     updatedAt: text("updated_at").default(sql`(datetime('now'))`),
   },

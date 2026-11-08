@@ -65,7 +65,7 @@ export function ArticleReader() {
 		selectedArticleId,
 		selectArticle,
 		detailError,
-		targetLanguage,
+		displayedLanguages,
 		isLoadingDetail,
 		translations,
 		extractArticle,
@@ -74,6 +74,7 @@ export function ArticleReader() {
 		createAnnotation,
 		loadAnnotations,
 	} = useArticleStore();
+	const targetLanguage = displayedLanguages[selectedArticleId ?? ""] ?? "zh-CN";
 	const { feeds } = useFeedStore();
 	const contentRef = useRef<HTMLDivElement>(null);
 	const articleContentRef = useRef<HTMLDivElement>(null);
