@@ -21,6 +21,13 @@ enum CacheFiles {
   static func imageMIME(_ data: Data) -> String? {
     guard let source = CGImageSourceCreateWithData(data as CFData, nil),
       CGImageSourceGetCount(source) > 0,
+      CGImageSourceCreateThumbnailAtIndex(
+        source, 0,
+        [
+          kCGImageSourceCreateThumbnailFromImageAlways: true,
+          kCGImageSourceThumbnailMaxPixelSize: 1,
+          kCGImageSourceShouldCacheImmediately: true,
+        ] as CFDictionary) != nil,
       let identifier = CGImageSourceGetType(source),
       let type = UTType(identifier as String), type.conforms(to: .image)
     else { return nil }

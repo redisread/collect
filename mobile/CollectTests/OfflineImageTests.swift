@@ -24,6 +24,8 @@ struct OfflineImageTests {
           "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWQ0AAAAASUVORK5CYII="
       ))
     for url in record.imageURLs { try bytes.write(to: CacheFiles.image(owner: owner, url: url)) }
+    #expect(CacheFiles.imageMIME(bytes.prefix(33)) == nil)
+    #expect(CacheFiles.imageMIME(bytes.prefix(40)) == nil)
     defer {
       for url in record.imageURLs {
         try? FileManager.default.removeItem(at: CacheFiles.image(owner: owner, url: url))
