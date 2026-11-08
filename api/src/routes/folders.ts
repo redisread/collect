@@ -1,3 +1,4 @@
+import { reorderFolders } from "../services/SubscriptionManagement";
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
@@ -25,6 +26,10 @@ foldersRoute.get("/", async (c) => {
   } catch (err) {
     return c.json({ success: false, error: err instanceof Error ? err.message : "获取文件夹失败" }, 500);
   }
+});
+
+foldersRoute.post("/reorder", zValidator("json", z.object({ids:z.array(z.string().min(1)).min(1).max(500).refine(ids=>new Set(ids).size===ids.length)})), async c => {
+  return c.json({success:true,data:{folders:await reorderFolders(getDb(c.env.DB),c.get("userId"),c.req.valid("json").ids)}});
 });
 
 // POST /api/folders — 为当前用户创建文件夹

@@ -86,6 +86,7 @@ export const feeds = sqliteTable(
 			.$defaultFn(() => crypto.randomUUID().replace(/-/g, "").slice(0, 16)),
 		userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
 		folderId: text("folder_id").references(() => folders.id, { onDelete: "set null" }),
+		unsubscribedAt: text("unsubscribed_at"),
 		autoExtract: integer("auto_extract", { mode: "boolean" }).notNull().default(false),
 		title: text("title").notNull(),
 		url: text("url").notNull(),

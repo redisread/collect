@@ -75,7 +75,7 @@ articlesRoute.get("/", async (c) => {
       const folderFeeds = await db
         .select({ id: feeds.id })
         .from(feeds)
-        .where(and(folderId ? eq(feeds.folderId, folderId) : isNull(feeds.folderId), eq(feeds.userId, userId)));
+        .where(and(folderId ? eq(feeds.folderId, folderId) : isNull(feeds.folderId), eq(feeds.userId, userId), isNull(feeds.unsubscribedAt)));
       if (folderFeeds.length === 0) return c.json({ success: true, data: { articles: [], total: 0, page, pageSize } });
       userFeedIds = folderFeeds.map((f) => f.id);
     } else {

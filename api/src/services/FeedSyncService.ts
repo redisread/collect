@@ -25,7 +25,7 @@ export interface ParsedFeedWithMeta extends ParsedFeed {
   hash?: string;
 }
 
-async function articleIdForUrl(feedId: string, url: string): Promise<string> {
+export async function articleIdForUrl(feedId: string, url: string): Promise<string> {
   const input = new TextEncoder().encode(JSON.stringify([feedId, url]));
   const digest = await crypto.subtle.digest("SHA-256", input);
   return Array.from(new Uint8Array(digest), (byte) =>
@@ -150,7 +150,7 @@ export class FeedSyncService {
       .from(feeds)
       .where(and(eq(feeds.id, feedId), eq(feeds.userId, userId)));
 
-    if (!feed) {
+    if (!feed || feed.unsubscribedAt) {
       return { feedId, error: "Feed not found", duration: 0 };
     }
 
@@ -165,7 +165,7 @@ export class FeedSyncService {
       .where(eq(feeds.id, feedId));
 
     // A feed deleted after enqueue is already in the desired final state.
-    if (!feed) {
+    if (!feed || feed.unsubscribedAt) {
       return { feedId, newArticles: 0, duration: 0 };
     }
 
@@ -182,7 +182,7 @@ export class FeedSyncService {
         .from(feeds)
         .where(eq(feeds.id, job.feedId));
 
-      if (!feed) {
+      if (!feed || feed.unsubscribedAt) {
         throw new Error("Feed not found");
       }
 

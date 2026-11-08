@@ -1,3 +1,6 @@
+import { HTTPException } from "hono/http-exception";
+import { unsubscribeFeeds, moveSubscriptions } from "../services/SubscriptionManagement";
+import { saveSubscription } from "../services/SubscriptionCreation";
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
@@ -13,16 +16,6 @@ import type { CloudflareEnv } from "../types";
 const feedsRoute = new Hono<{ Bindings: CloudflareEnv; Variables: { userId: string } }>();
 
 feedsRoute.use("/*", authMiddleware);
-
-/** 从 URL 推断 favicon URL */
-function getFaviconUrl(siteUrl: string): string {
-  try {
-    const url = new URL(siteUrl);
-    return `${url.protocol}//${url.hostname}/favicon.ico`;
-  } catch {
-    return "";
-  }
-}
 
 // GET /api/feeds — 获取当前用户的所有订阅源（含未读数）
 feedsRoute.get("/", async (c) => {
@@ -64,8 +57,18 @@ feedsRoute.get("/", async (c) => {
 
     return c.json({ success: true, data: result });
   } catch (err) {
+      if (err instanceof HTTPException) throw err;
     return c.json({ success: false, error: err instanceof Error ? err.message : "获取订阅源失败" }, 500);
   }
+});
+
+const batchInput = z.object({ids:z.array(z.string().min(1)).min(1).max(50).refine(ids => new Set(ids).size === ids.length)});
+feedsRoute.post("/batch/move", zValidator("json", batchInput.extend({folderId:z.string().min(1).nullable()})), async c => {
+  const {ids,folderId}=c.req.valid("json");
+  return c.json({success:true,data:{feeds:await moveSubscriptions(getDb(c.env.DB),c.get("userId"),ids,folderId)}});
+});
+feedsRoute.post("/batch/unsubscribe", zValidator("json", batchInput), async c => {
+  return c.json({success:true,data:await unsubscribeFeeds(getDb(c.env.DB),c.get("userId"),c.req.valid("json").ids)});
 });
 
 // POST /api/feeds — 为当前用户添加订阅源
@@ -73,7 +76,7 @@ feedsRoute.post(
   "/",
   zValidator("json", z.object({
     url: z.string().min(1, "订阅源 URL 不能为空"),
-    folderId: z.string().optional(),
+    folderId: z.string().min(1).nullable().optional(),
   })),
   async (c) => {
     try {
@@ -81,86 +84,31 @@ feedsRoute.post(
       const body = c.req.valid("json");
       const db = getDb(c.env.DB);
 
-      let feedUrl = body.url.trim();
+      if (body.folderId) {
+        const folder = await db.select({id:folders.id}).from(folders).where(and(eq(folders.id,body.folderId),eq(folders.userId,userId))).get();
+        if (!folder) return c.json({success:false,error:"目标文件夹不存在"},400);
+      }
+      let feedUrl = normalizeFeedUrl(body.url.trim());
+      const direct = await db.select().from(feeds).where(and(eq(feeds.feedUrl,feedUrl),eq(feeds.userId,userId))).get();
+      if (direct && !direct.unsubscribedAt) return c.json({success:false,error:"该订阅源已存在"},409);
 
       // 尝试自动发现 Feed URL
       const discovered = await discoverFeedUrl(feedUrl);
       if (discovered) feedUrl = discovered;
       feedUrl = normalizeFeedUrl(feedUrl);
 
-      // 抓取并解析 Feed
-      const fetcher = new RSSFetcher();
-      const parsed = await fetcher.fetch(feedUrl);
-
       // 检查当前用户是否已订阅该 Feed
       const [existing] = await db
         .select()
         .from(feeds)
         .where(and(eq(feeds.feedUrl, feedUrl), eq(feeds.userId, userId)));
-      if (existing) return c.json({ success: false, error: "该订阅源已存在" }, 409);
+      if (existing && !existing.unsubscribedAt) return c.json({ success: false, error: "该订阅源已存在" }, 409);
+      const parsed = await new RSSFetcher().fetch(feedUrl);
 
-      const faviconUrl = parsed.faviconUrl ?? getFaviconUrl(parsed.siteUrl);
-
-      const existingFeeds = await db
-        .select()
-        .from(feeds)
-        .where(eq(feeds.userId, userId))
-        .orderBy(asc(feeds.sortOrder));
-      const maxOrder = existingFeeds.length > 0 ? (existingFeeds[existingFeeds.length - 1].sortOrder ?? 0) + 1 : 0;
-
-      const [feed] = await db
-        .insert(feeds)
-        .values({
-          userId,
-          folderId: body.folderId ?? null,
-          title: parsed.title,
-          url: parsed.siteUrl,
-          feedUrl,
-          description: parsed.description,
-          faviconUrl,
-          lastFetchedAt: new Date().toISOString(),
-          sortOrder: maxOrder,
-        })
-        .onConflictDoNothing()
-        .returning();
-
-      if (!feed) return c.json({ success: false, error: "该订阅源已存在" }, 409);
-
-      // 保存文章
-      if (parsed.articles.length > 0) {
-        const articleValues = parsed.articles.slice(0, 50).map((a) => ({
-          userId,
-          feedId: feed.id,
-          title: a.title,
-          url: a.url,
-          content: a.content,
-          summary: a.summary,
-          author: a.author,
-          imageUrl: a.imageUrl,
-          publishedAt: a.publishedAt,
-          isRead: 0 as any,
-          isStarred: 0 as any,
-          isReadLater: 0 as any,
-        }));
-
-        try {
-          // Try batch insert first
-          await db.insert(articles).values(articleValues).onConflictDoNothing();
-        } catch (insertErr) {
-          console.error("Batch insert failed, trying individual inserts:", insertErr);
-          // Fall back to individual inserts
-          for (const article of articleValues) {
-            try {
-              await db.insert(articles).values(article).onConflictDoNothing();
-            } catch (e) {
-              console.error("Individual insert failed:", e);
-            }
-          }
-        }
-      }
-
-      return c.json({ success: true, data: { ...feed, unreadCount: parsed.articles.length } }, 201);
+      const feed = await saveSubscription(db,userId,parsed,{feedUrl,folderId:body.folderId,existing});
+      return c.json({success:true,data:feed},201);
     } catch (err) {
+      if (err instanceof HTTPException) throw err;
       return c.json({ success: false, error: err instanceof Error ? err.message : "添加订阅源失败" }, 500);
     }
   }
@@ -179,6 +127,7 @@ feedsRoute.get("/:id", async (c) => {
     if (!feed) return c.json({ success: false, error: "订阅源不存在" }, 404);
     return c.json({ success: true, data: feed });
   } catch (err) {
+      if (err instanceof HTTPException) throw err;
     return c.json({ success: false, error: err instanceof Error ? err.message : "获取订阅源失败" }, 500);
   }
 });
@@ -209,7 +158,10 @@ feedsRoute.put("/:id", async (c) => {
       if (typeof body.autoExtract !== "boolean") return c.json({ success: false, error: "无效的全文提取设置" }, 400);
       updates.autoExtract = body.autoExtract;
     }
-    if (body.title !== undefined) updates.title = body.title.trim();
+    if (body.title !== undefined) {
+      if (typeof body.title !== "string" || !body.title.trim() || body.title.trim().length > 200) return c.json({success:false,error:"名称需为 1–200 个字符"},400);
+      updates.title = body.title.trim();
+    }
     if ("folderId" in body) {
       if (body.folderId !== null && (typeof body.folderId !== "string" || !body.folderId)) {
         return c.json({ success: false, error: "无效的文件夹" }, 400);
@@ -231,6 +183,7 @@ feedsRoute.put("/:id", async (c) => {
 
     return c.json({ success: true, data: updated });
   } catch (err) {
+      if (err instanceof HTTPException) throw err;
     return c.json({ success: false, error: err instanceof Error ? err.message : "更新订阅源失败" }, 500);
   }
 });
@@ -247,9 +200,10 @@ feedsRoute.delete("/:id", async (c) => {
       .where(and(eq(feeds.id, id), eq(feeds.userId, userId)));
     if (!existing) return c.json({ success: false, error: "订阅源不存在" }, 404);
 
-    await db.delete(feeds).where(and(eq(feeds.id, id), eq(feeds.userId, userId)));
-    return c.json({ success: true, data: { id } });
+    const result = await unsubscribeFeeds(db,userId,[id]);
+    return c.json({ success: true, data: { id, ...result } });
   } catch (err) {
+      if (err instanceof HTTPException) throw err;
     return c.json({ success: false, error: err instanceof Error ? err.message : "删除订阅源失败" }, 500);
   }
 });
@@ -281,6 +235,7 @@ feedsRoute.post("/:id/mark-all-read", async (c) => {
       },
     });
   } catch (err) {
+      if (err instanceof HTTPException) throw err;
     return c.json({ success: false, error: err instanceof Error ? err.message : "标记已读失败" }, 500);
   }
 });

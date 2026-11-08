@@ -57,10 +57,10 @@ export function FeedItem({ feed, isSelected }: FeedItemProps) {
 			onClick: () => window.open(feed.url, "_blank", "noopener,noreferrer"),
 		},
 		{
-			label: "删除订阅源",
+			label: "取消订阅",
 			icon: "🗑",
 			variant: "danger",
-			onClick: () => deleteFeed(feed.id),
+			onClick: () => { if (window.confirm("取消订阅并清理普通文章？收藏和稍后阅读会保留。")) void deleteFeed(feed.id).catch(error => window.alert(error instanceof Error ? error.message : "取消订阅失败，请重试")); },
 		},
 	];
 

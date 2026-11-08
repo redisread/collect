@@ -29,7 +29,7 @@ export async function nativeSyncPage(db: DB, userId: string, after: number) {
     .where(and(range, eq(articles.userId, userId))) : [];
   const updatedFeeds = kinds.has("feed") ? await db.select({
     id: feeds.id, title: feeds.title, feedUrl: feeds.feedUrl, folderId: feeds.folderId,
-    autoExtract: feeds.autoExtract, sortOrder: feeds.sortOrder,
+    unsubscribedAt: feeds.unsubscribedAt, autoExtract: feeds.autoExtract, sortOrder: feeds.sortOrder,
   }).from(feeds).innerJoin(nativeChanges, and(eq(nativeChanges.entityId, feeds.id), eq(nativeChanges.kind, "feed")))
     .where(and(range, eq(feeds.userId, userId))) : [];
   const updatedFolders = kinds.has("folder") ? await db.select({ id: folders.id, name: folders.name, sortOrder: folders.sortOrder })
