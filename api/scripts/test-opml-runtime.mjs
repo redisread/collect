@@ -64,6 +64,31 @@ try {
   assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM feeds').first()).n,448);
   assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM articles').first()).n,448);
   console.log('PASS workerd partial send recovery and duplicate-safe persisted totals');
+  let cursor = 0;
+  const articleIDs = new Set();
+  let page;
+  do {
+    page = await request('/native-sync?after=' + cursor);
+    for (const article of page.articles) articleIDs.add(article.id);
+    cursor = page.cursor;
+  } while (page.hasMore);
+  assert.equal(articleIDs.size, 448);
+  const unchanged = await request('/native-sync?after=' + cursor);
+  assert.deepEqual(unchanged, {cursor, hasMore:false, articles:[], feeds:[], folders:[], deleted:[]});
+  const articleID = [...articleIDs][0];
+  await db.prepare('UPDATE articles SET is_read=1 WHERE id=?').bind(articleID).run();
+  const changed = await request('/native-sync?after=' + cursor);
+  assert.equal(changed.articles.length, 1);
+  assert.equal(changed.articles[0].id, articleID);
+  assert.equal(changed.articles[0].isRead, true);
+  assert.equal(changed.articles[0].content, undefined);
+  assert.equal(changed.feeds.length, 0);
+  await db.prepare('DELETE FROM feeds WHERE id=?').bind(changed.articles[0].feedId).run();
+  const deleted = await request('/native-sync?after=' + changed.cursor);
+  assert.ok(deleted.deleted.some(row => row.kind === 'article' && row.id === articleID));
+  assert.ok(deleted.deleted.some(row => row.kind === 'feed' && row.id === changed.articles[0].feedId));
+  console.log('PASS workerd native bootstrap 448 articles, empty delta, state delta and cascade deletion');
+
 } finally {
   await mf?.dispose();
   await rm(directory,{recursive:true,force:true});

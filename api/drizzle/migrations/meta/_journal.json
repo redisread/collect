@@ -57,6 +57,13 @@
       "when": 1794134381344,
       "tag": "0007_reader_preferences",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1794138826118,
+      "tag": "0008_native_incremental_sync",
+      "breakpoints": true
     }
   ]
 }

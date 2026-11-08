@@ -1,5 +1,5 @@
+import { nativeArticleFields, nativeSyncPage } from "../lib/native-sync";
 import { automaticallyExtract } from "../lib/automatic-extraction";
-import { articleExpiry } from "../lib/article-retention";
 import { nativeContent } from "../lib/native-content";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -20,17 +20,16 @@ app.delete("/session", async c => {
   return c.json({ success: true, data: {} });
 });
 
+app.get("/sync", async c => {
+  const parsed = z.coerce.number().int().min(0).max(Number.MAX_SAFE_INTEGER).safeParse(c.req.query("after") ?? "0");
+  if (!parsed.success) return c.json({ success: false, error: "无效的同步位置" }, 400);
+  return c.json({ success: true, data: await nativeSyncPage(getDb(c.env.DB), c.get("userId"), parsed.data) });
+});
+
 // Keyset paging allows a full reconciliation without carrying article bodies.
 app.get("/articles", async c => {
   const cursor = c.req.query("after") || "";
-  const rows = await getDb(c.env.DB).select({
-    expiresAt: articleExpiry(), id: articles.id, feedId: articles.feedId, title: articles.title, url: articles.url,
-    summary: articles.summary, author: articles.author, publishedAt: articles.publishedAt,
-    imageUrl: articles.imageUrl, isRead: articles.isRead, isStarred: articles.isStarred,
-    isReadLater: articles.isReadLater, readingProgress: articles.readingProgress,
-    readVersion: articles.readVersion, starVersion: articles.starVersion,
-    laterVersion: articles.laterVersion, progressVersion: articles.progressVersion,
-  }).from(articles).where(and(eq(articles.userId, c.get("userId")), gt(articles.id, cursor)))
+  const rows = await getDb(c.env.DB).select(nativeArticleFields).from(articles).where(and(eq(articles.userId, c.get("userId")), gt(articles.id, cursor), c.req.query("feedId") ? eq(articles.feedId, c.req.query("feedId")!) : undefined))
     .orderBy(asc(articles.id)).limit(200);
   return c.json({ success: true, data: { articles: rows, next: rows.length === 200 ? rows.at(-1)!.id : null } });
 });
@@ -59,7 +58,7 @@ app.patch("/articles/:id", async c => {
   // A conditional UPDATE keeps conflict detection atomic with the write.
   const updated = await db.update(articles).set({ [body.field]: body.value })
     .where(and(owned, eq(versions[body.field], body.version))).returning({ id: articles.id });
-  const current = await db.select().from(articles).where(owned).get();
+  const current = await db.select(nativeArticleFields).from(articles).where(owned).get();
   if (!current) return c.json({ success: false, error: "文章不存在" }, 404);
   if (!updated.length) return c.json({ success: false, error: "文章已在其他设备更新", data: current }, 409);
   return c.json({ success: true, data: current });

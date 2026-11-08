@@ -1,6 +1,6 @@
 import Foundation
 
-struct ReaderPreferences: Decodable, Sendable {
+struct ReaderPreferences: Codable, Sendable {
   let articleRetentionDays: Int
   let translationTargetLanguage: String
 }

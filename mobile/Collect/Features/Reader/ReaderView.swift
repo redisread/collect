@@ -115,7 +115,7 @@ struct ReaderView: View {
       await store.prepareArticle(articleID, extract: true)
       if store.records[articleID]?.bodyHTML != nil {
         store.change(articleID, field: .isRead, value: 1)
-        await store.sync()
+        await store.uploadPending()
       }
     }
     .task(id: progress) {
@@ -127,7 +127,7 @@ struct ReaderView: View {
     }
     .onDisappear {
       saveProgress()
-      Task { await store.sync() }
+      Task { await store.uploadPending() }
     }
     .onChange(of: navigator.externalURL) { _, url in if let url { openURL(url) } }
   }
@@ -138,7 +138,7 @@ struct ReaderView: View {
   private func toggle(_ field: ArticleField) {
     guard let article else { return }
     store.change(articleID, field: field, value: article.value(for: field) == 0 ? 1 : 0)
-    Task { await store.sync() }
+    Task { await store.uploadPending() }
   }
   private func translate() {
     guard let session = store.session, let record = store.records[articleID],
