@@ -55,6 +55,7 @@ dependencies:
   # 网络状态检测
   connectivity_plus: ^6.1.0
 
+  path: ^1.9.1
 dev_dependencies:
   flutter_test:
     sdk: flutter

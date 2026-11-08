@@ -119,7 +119,7 @@ class ArticleCard extends ConsumerWidget {
           color: Theme.of(context).cardColor,
           border: Border(
             bottom: BorderSide(
-              color: Theme.of(context).dividerColor.withOpacity(0.5),
+              color: Theme.of(context).dividerColor.withValues(alpha: 0.5),
               width: 0.5,
             ),
           ),
@@ -179,7 +179,7 @@ class ArticleCard extends ConsumerWidget {
                       const SizedBox(height: 4),
                       Text(
                         article.summary!,
-                        style: TextStyle(
+                        style: const TextStyle(
                           color: CupertinoColors.systemGrey,
                           fontSize: 13,
                           height: 1.3,

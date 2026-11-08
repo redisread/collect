@@ -30,7 +30,7 @@ class HomeScreen extends ConsumerWidget {
           SizedBox(
             width: 260,
             child: Container(
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 border: Border(
                   right: BorderSide(
                     color: CupertinoColors.separator,
@@ -108,7 +108,7 @@ class HomeScreen extends ConsumerWidget {
               onPressed: () => _openOfflineArticles(context),
               child: Row(
                 children: [
-                  Icon(
+                  const Icon(
                     CupertinoIcons.download_circle,
                     color: CupertinoColors.activeBlue,
                     size: 20,
@@ -134,7 +134,7 @@ class HomeScreen extends ConsumerWidget {
                         ),
                       ),
                   ),
-                  Icon(
+                  const Icon(
                     CupertinoIcons.chevron_forward,
                     color: CupertinoColors.systemGrey3,
                     size: 16,
@@ -172,10 +172,10 @@ class HomeScreen extends ConsumerWidget {
         ],
       ),
       loading: () => const Center(child: CupertinoActivityIndicator()),
-      error: (e, _) => Center(
+      error: (e, _) => const Center(
         child: Text(
           '错误：\$e',
-          style: const TextStyle(color: CupertinoColors.systemRed),
+          style: TextStyle(color: CupertinoColors.systemRed),
         ),
       ),
     );
@@ -196,10 +196,10 @@ class HomeScreen extends ConsumerWidget {
             Icon(
               CupertinoIcons.exclamationmark_triangle,
               size: 48,
-              color: CupertinoColors.systemRed.withOpacity(0.6),
+              color: CupertinoColors.systemRed.withValues(alpha: 0.6),
             ),
             const SizedBox(height: 16),
-            Text(
+            const Text(
               '加载失败',
               style: TextStyle(
                 fontSize: 17,
@@ -221,7 +221,7 @@ class HomeScreen extends ConsumerWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
+            const Icon(
               CupertinoIcons.doc_text,
               size: 64,
               color: CupertinoColors.systemGrey,

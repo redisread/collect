@@ -78,8 +78,8 @@ class _OfflineArticlesScreenState extends ConsumerState<OfflineArticlesScreen> {
         trailing: _articles.isNotEmpty
             ? CupertinoButton(
                 padding: EdgeInsets.zero,
-                child: const Icon(CupertinoIcons.trash),
                 onPressed: _clearCache,
+                child: const Icon(CupertinoIcons.trash),
               )
             : null,
       ),
@@ -93,7 +93,7 @@ class _OfflineArticlesScreenState extends ConsumerState<OfflineArticlesScreen> {
     }
 
     if (_articles.isEmpty) {
-      return Center(
+      return const Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -102,16 +102,16 @@ class _OfflineArticlesScreenState extends ConsumerState<OfflineArticlesScreen> {
               size: 64,
               color: CupertinoColors.systemGrey,
             ),
-            const SizedBox(height: 16),
-            const Text(
+            SizedBox(height: 16),
+            Text(
               '没有离线文章',
               style: TextStyle(
                 fontSize: 17,
                 color: CupertinoColors.systemGrey,
               ),
             ),
-            const SizedBox(height: 8),
-            const Text(
+            SizedBox(height: 8),
+            Text(
               '收藏或下载文章以供离线阅读',
               style: TextStyle(
                 fontSize: 14,
@@ -174,7 +174,7 @@ class _OfflineArticlesScreenState extends ConsumerState<OfflineArticlesScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
-            color: CupertinoColors.systemGrey2.withOpacity(0.9),
+            color: CupertinoColors.systemGrey2.withValues(alpha: 0.9),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Text(

@@ -246,6 +246,9 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
             // 翻译按钮
             CupertinoButton(
               padding: EdgeInsets.zero,
+              onPressed: translationState.isTranslating
+                  ? null
+                  : () => _translateArticle(article),
               child: translationState.isTranslating
                   ? const SizedBox(
                       width: 16,
@@ -260,9 +263,6 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
                           ? CupertinoColors.systemGreen
                           : CupertinoColors.systemGrey,
                     ),
-              onPressed: translationState.isTranslating
-                  ? null
-                  : () => _translateArticle(article),
             ),
             // 分享按钮
             CupertinoButton(
@@ -301,8 +301,8 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 8),
-                color: CupertinoColors.systemYellow.withOpacity(0.2),
-                child: Row(
+                color: CupertinoColors.systemYellow.withValues(alpha: 0.2),
+                child: const Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
@@ -310,7 +310,7 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
                       size: 14,
                       color: CupertinoColors.systemOrange,
                     ),
-                    const SizedBox(width: 6),
+                    SizedBox(width: 6),
                     Text(
                       '离线模式',
                       style: TextStyle(
@@ -346,7 +346,7 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
     // 有翻译时，显示原文/双语/译文
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: CupertinoColors.systemBackground,
         border: Border(
           bottom: BorderSide(color: CupertinoColors.separator),
@@ -381,7 +381,7 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
               const Spacer(),
               // 离线指示器
               if (isTranslationOffline) ...[
-                Icon(
+                const Icon(
                   CupertinoIcons.wifi_slash,
                   size: 14,
                   color: CupertinoColors.systemOrange,
@@ -418,7 +418,7 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
   Widget _buildContentSwitcher() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: CupertinoColors.systemBackground,
         border: Border(
           bottom: BorderSide(
@@ -486,7 +486,7 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
+          const Icon(
             CupertinoIcons.doc_text,
             size: 64,
             color: CupertinoColors.systemGrey,
@@ -703,13 +703,13 @@ $content
           if (translated != null)
             Text(
               translated,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 14,
                 color: CupertinoColors.systemBlue,
               ),
             ),
           if (original != null || translated != null)
-            Divider(height: 16, color: CupertinoColors.separator.withOpacity(0.5)),
+            Divider(height: 16, color: CupertinoColors.separator.withValues(alpha: 0.5)),
         ],
       ),
     );
@@ -922,7 +922,7 @@ $content
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
-            color: CupertinoColors.systemGrey2.withOpacity(0.9),
+            color: CupertinoColors.systemGrey2.withValues(alpha: 0.9),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Text(

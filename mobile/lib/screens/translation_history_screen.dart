@@ -2,7 +2,6 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../services/api_service.dart';
 import '../providers/translation_provider.dart';
 import '../providers/auth_provider.dart';
 
@@ -98,7 +97,7 @@ class _TranslationHistoryScreenState
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
-            color: CupertinoColors.systemGrey2.withOpacity(0.9),
+            color: CupertinoColors.systemGrey2.withValues(alpha: 0.9),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Text(
@@ -208,7 +207,7 @@ class _TranslationHistoryScreenState
       decoration: BoxDecoration(
         border: Border(
           bottom: BorderSide(
-            color: CupertinoColors.separator.withOpacity(0.5),
+            color: CupertinoColors.separator.withValues(alpha: 0.5),
           ),
         ),
       ),
@@ -237,7 +236,7 @@ class _TranslationHistoryScreenState
           const SizedBox(height: 4),
           Row(
             children: [
-              Icon(
+              const Icon(
                 Icons.translate,
                 size: 12,
                 color: CupertinoColors.systemGrey,
