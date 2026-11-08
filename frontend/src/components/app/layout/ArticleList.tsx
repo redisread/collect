@@ -47,6 +47,7 @@ export function ArticleList() {
 			case "all": return "全部文章";
 			case "starred": return "收藏";
 			case "read_later": return "稍后阅读";
+			case "uncategorized": return "未分类";
 			default: return "文章";
 		}
 	};

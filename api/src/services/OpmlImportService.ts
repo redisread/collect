@@ -131,22 +131,23 @@ export async function dispatchImportItems(env: CloudflareEnv, jobId?: string) {
 }
 
 async function saveImportedFeed(env: CloudflareEnv, item: Item, userId: string, token: string, parsed: ParsedFeed) {
+  const folderName = item.folderName?.trim() === "未分类" ? null : item.folderName;
   const feedId = crypto.randomUUID();
   const folderId = crypto.randomUUID();
   const now = new Date().toISOString();
   const siteUrl = safeSiteUrl(parsed.siteUrl || item.siteUrl || undefined, item.feedUrl);
   const guard = "EXISTS (SELECT 1 FROM opml_import_items WHERE id=? AND lease_token=? AND status='processing')";
   const statements: D1PreparedStatement[] = [];
-  if (item.folderName) {
+  if (folderName) {
     statements.push(env.DB.prepare(`INSERT INTO folders(id,user_id,name) SELECT ?,?,? WHERE ${guard}
       AND NOT EXISTS (SELECT 1 FROM folders WHERE user_id=? AND name=?)
       AND NOT EXISTS (SELECT 1 FROM feeds WHERE user_id=? AND feed_url=?)`)
-      .bind(folderId, userId, item.folderName, item.id, token, userId, item.folderName, userId, item.feedUrl));
+      .bind(folderId, userId, folderName, item.id, token, userId, folderName, userId, item.feedUrl));
   }
   statements.push(env.DB.prepare(`INSERT INTO feeds(id,user_id,folder_id,title,url,feed_url,description,favicon_url,last_fetched_at,next_fetch_at)
     SELECT ?,?,(SELECT id FROM folders WHERE user_id=? AND name=? ORDER BY id LIMIT 1),?,?,?,?,?,?,?
     WHERE ${guard} ON CONFLICT(feed_url,user_id) DO NOTHING`)
-    .bind(feedId, userId, userId, item.folderName, item.title || parsed.title || item.feedUrl, siteUrl, item.feedUrl,
+    .bind(feedId, userId, userId, folderName, item.title || parsed.title || item.feedUrl, siteUrl, item.feedUrl,
       parsed.description || "", parsed.faviconUrl || new URL("/favicon.ico", siteUrl).href, now,
       new Date(Date.now() + 3_600_000).toISOString(), item.id, token));
   const initialArticles = parsed.articles.slice(0, 50);

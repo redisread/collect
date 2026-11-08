@@ -18,6 +18,7 @@ export function FolderItem({ folder, feeds }: FolderItemProps) {
 	const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 	const [isRenaming, setIsRenaming] = useState(false);
 	const [renameValue, setRenameValue] = useState(folder.name);
+	const [renameError, setRenameError] = useState("");
 
 	const isCollapsed = folder.isCollapsed ?? false;
 	const isFolderSelected = selectedSource.type === "folder" && selectedSource.folderId === folder.id;
@@ -41,6 +42,8 @@ export function FolderItem({ folder, feeds }: FolderItemProps) {
 	};
 
 	const handleRenameSubmit = async () => {
+		if (renameValue.trim() === "未分类") { setRenameError("“未分类”是系统分组，请使用其他名称"); return; }
+		setRenameError("");
 		if (renameValue.trim() && renameValue !== folder.name) {
 			await renameFolder(folder.id, renameValue.trim());
 		}
@@ -130,6 +133,7 @@ export function FolderItem({ folder, feeds }: FolderItemProps) {
 					</span>
 				)}
 			</div>
+			{renameError && <p role="alert" className="px-2 text-xs text-red-600">{renameError}</p>}
 
 			{/* 订阅源列表（展开时显示） */}
 			{!isCollapsed && feeds.length > 0 && (

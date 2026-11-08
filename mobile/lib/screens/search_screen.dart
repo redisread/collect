@@ -1,5 +1,4 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../utils/debouncer.dart';
 import '../providers/article_provider.dart';
@@ -92,7 +91,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     return searchResults.when(
       data: (articles) {
         if (articles.isEmpty) {
-          return Center(
+          return const Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -101,8 +100,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                   size: 64,
                   color: CupertinoColors.systemGrey,
                 ),
-                const SizedBox(height: 16),
-                const Text(
+                SizedBox(height: 16),
+                Text(
                   '没有找到相关文章',
                   style: TextStyle(
                     fontSize: 17,
@@ -137,7 +136,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             Icon(
               CupertinoIcons.exclamationmark_triangle,
               size: 48,
-              color: CupertinoColors.systemRed.withOpacity(0.6),
+              color: CupertinoColors.systemRed.withValues(alpha: 0.6),
             ),
             const SizedBox(height: 16),
             Text(
@@ -217,7 +216,7 @@ class _SearchResultCard extends StatelessWidget {
             Row(
               children: [
                 if (article.isStarred)
-                  Icon(
+                  const Icon(
                     CupertinoIcons.star_fill,
                     size: 12,
                     color: CupertinoColors.systemYellow,
@@ -290,7 +289,7 @@ class _SearchResultCard extends StatelessWidget {
       matches.add(TextSpan(
         text: text.substring(index, index + query.length),
         style: baseStyle.copyWith(
-          backgroundColor: CupertinoColors.systemYellow.withOpacity(0.4),
+          backgroundColor: CupertinoColors.systemYellow.withValues(alpha: 0.4),
           fontWeight: FontWeight.w600,
         ),
       ));

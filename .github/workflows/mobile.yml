@@ -1,6 +1,11 @@
 name: Build Mobile
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "mobile/**"
+      - ".github/workflows/mobile.yml"
   push:
     branches: [main]
     paths:

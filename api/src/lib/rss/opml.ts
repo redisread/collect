@@ -34,7 +34,8 @@ export function parseOpml(opmlXml: string): OpmlFeed[] {
         const folderName = stack.map(item => item.folder).filter(Boolean).join(" / ");
         const xmlUrl = (attributes.xmlurl || "").trim();
         if (xmlUrl.length > 2048 || title.length > 500 || folderName.length > 1000 || (attributes.htmlurl?.length ?? 0) > 2048) throw new OpmlParseError("订阅地址或名称过长");
-        feeds.push({ xmlUrl, title: title || xmlUrl || "未命名订阅", htmlUrl: attributes.htmlurl, folderName: folderName || undefined });
+        const parentFolder = [...stack].reverse().find(item => item.folder)?.folder;
+        feeds.push({ xmlUrl, title: title || xmlUrl || "未命名订阅", htmlUrl: attributes.htmlurl, folderName: folderName && parentFolder !== "未分类" ? folderName : undefined });
         if (feeds.length > 1000) throw new OpmlParseError("每次最多导入 1000 个订阅源");
       } else { folder = title; }
     }

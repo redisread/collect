@@ -57,6 +57,7 @@ export type ArticleListItem = Omit<Article, "content">;
 
 // ==================== SelectedSource Types ====================
 export type SelectedSource =
+  | { type: "uncategorized" }
   | { type: "all" }
   | { type: "starred" }
   | { type: "read_later" }

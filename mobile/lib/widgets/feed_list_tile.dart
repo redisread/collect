@@ -40,8 +40,10 @@ class FeedListTile extends ConsumerWidget {
               ),
             )
           : null,
-      onTap: () =>
-          ref.read(selectedFeedIdProvider.notifier).state = feed.id,
+      onTap: () {
+        ref.read(uncategorizedSelectedProvider.notifier).state = false;
+        ref.read(selectedFeedIdProvider.notifier).state = feed.id;
+      },
     );
   }
 }

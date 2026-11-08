@@ -8,7 +8,6 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/article.dart';
 import '../providers/article_provider.dart';
-import '../providers/auth_provider.dart';
 import '../providers/translation_provider.dart';
 import '../services/offline_service.dart';
 import '../widgets/reading_progress_bar.dart';
@@ -48,6 +47,7 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
 
   /// 是否从本地缓存加载
   bool _isOfflineMode = false;
+  bool _isTogglingRead = false;
 
   /// 本地缓存的文章
   Article? _cachedArticle;
@@ -145,9 +145,7 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
 
     // 2. 尝试从服务器获取最新内容
     try {
-      final api = ref.read(apiServiceProvider);
-      final articleData = await api.getArticle(widget.articleId);
-      final freshArticle = Article.fromJson(articleData['data'] as Map<String, dynamic>);
+      final freshArticle = await ref.read(articlesNotifierProvider.notifier).fetchArticle(widget.articleId);
 
       setState(() {
         _cachedArticle = freshArticle;
@@ -190,6 +188,11 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
       widget.articleId,
       progress: progress,
     );
+    if (!mounted) return;
+    final current = ref.read(articlesNotifierProvider.notifier).getArticle(widget.articleId);
+    if (current != null && _cachedArticle?.isRead != current.isRead) {
+      setState(() => _cachedArticle = _cachedArticle?.copyWith(isRead: current.isRead));
+    }
   }
 
   /// 恢复阅读位置
@@ -246,6 +249,9 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
             // 翻译按钮
             CupertinoButton(
               padding: EdgeInsets.zero,
+              onPressed: translationState.isTranslating
+                  ? null
+                  : () => _translateArticle(article),
               child: translationState.isTranslating
                   ? const SizedBox(
                       width: 16,
@@ -260,9 +266,6 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
                           ? CupertinoColors.systemGreen
                           : CupertinoColors.systemGrey,
                     ),
-              onPressed: translationState.isTranslating
-                  ? null
-                  : () => _translateArticle(article),
             ),
             // 分享按钮
             CupertinoButton(
@@ -301,8 +304,8 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 8),
-                color: CupertinoColors.systemYellow.withOpacity(0.2),
-                child: Row(
+                color: CupertinoColors.systemYellow.withValues(alpha: 0.2),
+                child: const Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
@@ -310,7 +313,7 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
                       size: 14,
                       color: CupertinoColors.systemOrange,
                     ),
-                    const SizedBox(width: 6),
+                    SizedBox(width: 6),
                     Text(
                       '离线模式',
                       style: TextStyle(
@@ -346,7 +349,7 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
     // 有翻译时，显示原文/双语/译文
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: CupertinoColors.systemBackground,
         border: Border(
           bottom: BorderSide(color: CupertinoColors.separator),
@@ -381,7 +384,7 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
               const Spacer(),
               // 离线指示器
               if (isTranslationOffline) ...[
-                Icon(
+                const Icon(
                   CupertinoIcons.wifi_slash,
                   size: 14,
                   color: CupertinoColors.systemOrange,
@@ -418,7 +421,7 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
   Widget _buildContentSwitcher() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: CupertinoColors.systemBackground,
         border: Border(
           bottom: BorderSide(
@@ -486,7 +489,7 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
+          const Icon(
             CupertinoIcons.doc_text,
             size: 64,
             color: CupertinoColors.systemGrey,
@@ -703,13 +706,13 @@ $content
           if (translated != null)
             Text(
               translated,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 14,
                 color: CupertinoColors.systemBlue,
               ),
             ),
           if (original != null || translated != null)
-            Divider(height: 16, color: CupertinoColors.separator.withOpacity(0.5)),
+            Divider(height: 16, color: CupertinoColors.separator.withValues(alpha: 0.5)),
         ],
       ),
     );
@@ -877,9 +880,7 @@ $content
       // 如果文章没有内容，先获取详情
       Article articleToCache = article;
       if (article.content == null || article.content!.isEmpty) {
-        final api = ref.read(apiServiceProvider);
-        final articleData = await api.getArticle(article.id);
-        articleToCache = Article.fromJson(articleData['data'] as Map<String, dynamic>);
+        articleToCache = await ref.read(articlesNotifierProvider.notifier).fetchArticle(article.id);
       }
 
       await OfflineService.cacheArticle(articleToCache, articleToCache.content);
@@ -890,9 +891,17 @@ $content
   }
 
   /// 切换已读状态
-  void _toggleRead(String articleId, bool isRead) {
-    final notifier = ref.read(articlesNotifierProvider.notifier);
-    notifier.toggleRead(articleId);
+  Future<void> _toggleRead(String articleId, bool isRead) async {
+    if (_isTogglingRead) return;
+    _isTogglingRead = true;
+    try {
+      final updated = await ref.read(articlesNotifierProvider.notifier).toggleRead(articleId);
+      if (updated && mounted && _cachedArticle?.id == articleId) {
+        setState(() => _cachedArticle = _cachedArticle?.copyWith(isRead: isRead));
+      }
+    } catch (_) {
+      if (mounted) _showToast('更新已读状态失败，请重试');
+    } finally { _isTogglingRead = false; }
   }
 
   /// 在浏览器中打开
@@ -922,7 +931,7 @@ $content
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
-            color: CupertinoColors.systemGrey2.withOpacity(0.9),
+            color: CupertinoColors.systemGrey2.withValues(alpha: 0.9),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Text(

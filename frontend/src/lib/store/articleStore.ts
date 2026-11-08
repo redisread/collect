@@ -132,6 +132,7 @@ function buildArticleUrl(source: SelectedSource, page: number, sortOrder: string
 
 	if (source.type === "feed") params.set("feedId", source.feedId);
 	else if (source.type === "folder") params.set("folderId", source.folderId);
+	else if (source.type === "uncategorized") params.set("uncategorized", "true");
 	else if (source.type === "starred") params.set("filter", "starred");
 	else if (source.type === "read_later") params.set("filter", "read_later");
 
@@ -280,7 +281,8 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
           (source.type !== "starred" || current.isStarred) &&
           (source.type !== "read_later" || current.isReadLater) &&
           (source.type !== "feed" || current.feedId === source.feedId) &&
-          (source.type !== "folder" || useFeedStore.getState().feeds.find(feed => feed.id === current.feedId)?.folderId === source.folderId);
+          (source.type !== "folder" || useFeedStore.getState().feeds.find(feed => feed.id === current.feedId)?.folderId === source.folderId) &&
+          (source.type !== "uncategorized" || useFeedStore.getState().feeds.some(feed => feed.id === current.feedId && !feed.folderId));
         if (selectedId && useUiStore.getState().hideRead && matchesSource && !refreshed.some(article => article.id === selectedId)) {
           refreshed.push(current);
         }

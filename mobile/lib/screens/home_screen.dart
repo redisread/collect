@@ -30,14 +30,14 @@ class HomeScreen extends ConsumerWidget {
           SizedBox(
             width: 260,
             child: Container(
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 border: Border(
                   right: BorderSide(
                     color: CupertinoColors.separator,
                   ),
                 ),
               ),
-              child: _buildFeedSidebar(ref, context),
+              child: Material(child: _buildFeedSidebar(ref, context)),
             ),
           ),
           Expanded(child: _buildArticleList(context, ref)),
@@ -108,7 +108,7 @@ class HomeScreen extends ConsumerWidget {
               onPressed: () => _openOfflineArticles(context),
               child: Row(
                 children: [
-                  Icon(
+                  const Icon(
                     CupertinoIcons.download_circle,
                     color: CupertinoColors.activeBlue,
                     size: 20,
@@ -134,7 +134,7 @@ class HomeScreen extends ConsumerWidget {
                         ),
                       ),
                   ),
-                  Icon(
+                  const Icon(
                     CupertinoIcons.chevron_forward,
                     color: CupertinoColors.systemGrey3,
                     size: 16,
@@ -152,18 +152,30 @@ class HomeScreen extends ConsumerWidget {
             ),
           ),
           SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (ctx, i) => FeedListTile(feed: feeds[i]),
-              childCount: feeds.length,
-            ),
+            delegate: SliverChildListDelegate([
+              ...feeds.where((feed) => feed.folderId != null).map((feed) => FeedListTile(feed: feed)),
+              ExpansionTile(
+                initiallyExpanded: true,
+                leading: const Icon(Icons.folder_outlined),
+                title: const Text('未分类'),
+                subtitle: Text('${feeds.where((feed) => feed.folderId == null).fold<int>(0, (sum, feed) => sum + feed.unreadCount)} 篇未读'),
+                children: [
+                  ListTile(title: const Text('查看全部文章'), onTap: () {
+                    ref.read(selectedFeedIdProvider.notifier).state = null;
+                    ref.read(uncategorizedSelectedProvider.notifier).state = true;
+                  }),
+                  ...feeds.where((feed) => feed.folderId == null).map((feed) => FeedListTile(feed: feed)),
+                ],
+              ),
+            ]),
           ),
         ],
       ),
       loading: () => const Center(child: CupertinoActivityIndicator()),
-      error: (e, _) => Center(
+      error: (e, _) => const Center(
         child: Text(
           '错误：\$e',
-          style: const TextStyle(color: CupertinoColors.systemRed),
+          style: TextStyle(color: CupertinoColors.systemRed),
         ),
       ),
     );
@@ -184,10 +196,10 @@ class HomeScreen extends ConsumerWidget {
             Icon(
               CupertinoIcons.exclamationmark_triangle,
               size: 48,
-              color: CupertinoColors.systemRed.withOpacity(0.6),
+              color: CupertinoColors.systemRed.withValues(alpha: 0.6),
             ),
             const SizedBox(height: 16),
-            Text(
+            const Text(
               '加载失败',
               style: TextStyle(
                 fontSize: 17,
@@ -209,7 +221,7 @@ class HomeScreen extends ConsumerWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
+            const Icon(
               CupertinoIcons.doc_text,
               size: 64,
               color: CupertinoColors.systemGrey,
@@ -270,6 +282,6 @@ class HomeScreen extends ConsumerWidget {
   Future<void> _refreshArticles(WidgetRef ref) async {
     final notifier = ref.read(articlesNotifierProvider.notifier);
     final selectedFeedId = ref.read(selectedFeedIdProvider);
-    await notifier.loadArticles(feedId: selectedFeedId);
+    await notifier.loadArticles(feedId: selectedFeedId, uncategorized: ref.read(uncategorizedSelectedProvider));
   }
 }

@@ -9,3 +9,4 @@ final feedsProvider = FutureProvider<List<Feed>>((ref) async {
 });
 
 final selectedFeedIdProvider = StateProvider<String?>((ref) => null);
+final uncategorizedSelectedProvider = StateProvider<bool>((ref) => false);
