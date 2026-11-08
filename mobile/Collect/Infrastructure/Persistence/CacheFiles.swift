@@ -1,5 +1,7 @@
 import CryptoKit
 import Foundation
+import ImageIO
+import UniformTypeIdentifiers
 
 enum CacheFiles {
   static var root: URL {
@@ -16,22 +18,21 @@ enum CacheFiles {
         FileManager.default.fileExists(atPath: image(owner: record.owner, url: $0).path)
       }
   }
+  static func imageMIME(_ data: Data) -> String? {
+    guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+      CGImageSourceGetCount(source) > 0,
+      let identifier = CGImageSourceGetType(source),
+      let type = UTType(identifier as String), type.conforms(to: .image)
+    else { return nil }
+    return type.preferredMIMEType
+  }
   static func inlineImages(_ html: String, record: CachedArticle) -> String {
     var result = html
     for source in record.imageURLs {
       guard let data = try? Data(contentsOf: image(owner: record.owner, url: source)) else {
         continue
       }
-      let mime: String
-      if data.starts(with: [0x89, 0x50, 0x4e, 0x47]) {
-        mime = "image/png"
-      } else if data.starts(with: [0x47, 0x49, 0x46]) {
-        mime = "image/gif"
-      } else if data.starts(with: [0x52, 0x49, 0x46, 0x46]) {
-        mime = "image/webp"
-      } else {
-        mime = "image/jpeg"
-      }
+      guard let mime = imageMIME(data) else { continue }
       let attribute = "src=\"" + source.replacingOccurrences(of: "&", with: "&amp;") + "\""
       result = result.replacingOccurrences(
         of: attribute,

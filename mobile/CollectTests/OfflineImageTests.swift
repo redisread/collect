@@ -4,6 +4,9 @@ import Testing
 @testable import Collect
 
 struct OfflineImageTests {
+  @Test func invalidImageDataIsNotCached() {
+    #expect(CacheFiles.imageMIME(Data("<html>error</html>".utf8)) == nil)
+  }
   @Test @MainActor func imageURLPrefixesDoNotCorruptCachedSources() throws {
     let owner = UUID().uuidString
     let article = try JSONDecoder().decode(
@@ -15,7 +18,11 @@ struct OfflineImageTests {
     let record = try CachedArticle(owner: owner, article: article)
     record.imageURLs = ["https://example.com/image", "https://example.com/image?w=600"]
     try FileManager.default.createDirectory(at: CacheFiles.root, withIntermediateDirectories: true)
-    let bytes = Data([0x89, 0x50, 0x4e, 0x47, 1, 2, 3])
+    let bytes = try #require(
+      Data(
+        base64Encoded:
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWQ0AAAAASUVORK5CYII="
+      ))
     for url in record.imageURLs { try bytes.write(to: CacheFiles.image(owner: owner, url: url)) }
     defer {
       for url in record.imageURLs {

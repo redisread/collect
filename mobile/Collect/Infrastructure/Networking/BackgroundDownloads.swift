@@ -64,6 +64,8 @@ final class BackgroundDownloads: NSObject, URLSessionDownloadDelegate {
     do {
       let size = try location.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
       guard size <= 20_000_000 else { return }
+      let data = try Data(contentsOf: location, options: .mappedIfSafe)
+      guard CacheFiles.imageMIME(data) != nil else { return }
       try FileManager.default.createDirectory(
         at: CacheFiles.root, withIntermediateDirectories: true)
       let destination = CacheFiles.file(key)
