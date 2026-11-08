@@ -338,7 +338,8 @@ export function ArticleReader() {
 				{/* 正文区域 */}
 				<div ref={contentRef} className="min-h-0 flex-1 overflow-y-auto relative">
 					<article className="max-w-[680px] mx-auto px-6 py-8 animate-fade-in">
-						{/* 来源信息 */}
+						{!selectedArticle.isStarred && !selectedArticle.isReadLater && selectedArticle.expiresAt && <p className="mb-3 text-xs text-[var(--text-tertiary)]">预计清理日期 {selectedArticle.expiresAt.slice(0, 10)}</p>}
+            {/* 来源信息 */}
 						<div className="flex items-center gap-2 mb-4">
 							{feed?.faviconUrl && (
 								<img

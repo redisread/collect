@@ -1,7 +1,7 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useUiStore } from "@/lib/store/uiStore";
 import { useEffect, useRef, useCallback } from "react";
-import { useArticleStore } from "@/lib/store/articleStore";
+import { isSavedGroup, useArticleStore } from "@/lib/store/articleStore";
 import { useFeedStore } from "@/lib/store/feedStore";
 import { ArticleCard } from "../article/ArticleCard";
 import { ArticleCardSkeleton } from "../article/ArticleSkeleton";
@@ -14,7 +14,8 @@ export function ArticleList() {
 	const { selectedSource } = useFeedStore();
   const { hideRead, setHideRead } = useUiStore();
   const { selectedArticleId, isLoadingDetail, articleActionError } = useArticleStore();
-  const visibleArticles = articles.filter(article => !hideRead || !article.isRead || article.id === selectedArticleId);
+  const savedGroup = isSavedGroup(selectedSource);
+  const visibleArticles = articles.filter(article => savedGroup || !hideRead || !article.isRead || article.id === selectedArticleId);
 	const bottomRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
@@ -62,8 +63,9 @@ export function ArticleList() {
 						<p className="text-[11px] text-[var(--text-tertiary)]">{total} 篇</p>
 					)}
 				</div>
+        {selectedSource.type === "feed" && <button className="min-h-11 px-2 text-xs text-[var(--text-secondary)]" onClick={() => void useFeedStore.getState().markFeedRead(selectedSource.feedId)}>全部标为已读</button>}
 				<label className="ms-auto flex min-h-11 items-center gap-2 px-2 text-xs text-[var(--text-secondary)]">
-          <input type="checkbox" checked={hideRead} onChange={event => setHideRead(event.target.checked)} className="accent-[var(--accent)]" />隐藏已读
+          <input type="checkbox" disabled={savedGroup} checked={!savedGroup && hideRead} onChange={event => setHideRead(event.target.checked)} className="accent-[var(--accent)]" />隐藏已读
         </label>
         {/* 排序切换 */}
 				<button

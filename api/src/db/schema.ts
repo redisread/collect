@@ -86,6 +86,7 @@ export const feeds = sqliteTable(
 			.$defaultFn(() => crypto.randomUUID().replace(/-/g, "").slice(0, 16)),
 		userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
 		folderId: text("folder_id").references(() => folders.id, { onDelete: "set null" }),
+		autoExtract: integer("auto_extract", { mode: "boolean" }).notNull().default(false),
 		title: text("title").notNull(),
 		url: text("url").notNull(),
 		feedUrl: text("feed_url").notNull(),
@@ -157,6 +158,7 @@ export const articles = sqliteTable(
     lastReadAt: text("last_read_at"), // 最后阅读时间
     estimatedReadTime: integer("estimated_read_time"), // 预估阅读时间（分钟）
     // 保留策略
+    retentionGraceUntil: text("retention_grace_until"),
     retentionDate: text("retention_date"), // 保留到此日期
     createdAt: text("created_at").default(sql`(datetime('now'))`),
   },
@@ -320,7 +322,7 @@ export const userPreferences = sqliteTable(
     userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
     // 文章设置
     maxArticlesPerFeed: integer("max_articles_per_feed").default(100), // 每个订阅源保留的最大文章数
-    articleRetentionDays: integer("article_retention_days").default(30), // 文章保留天数（0=永久）
+    articleRetentionDays: integer("article_retention_days").default(30), // 普通文章保留天数，可选 7、30、60、90
     defaultView: text("default_view").default("all"), // "all" | "unread" | "starred" | "read-later"
     // 刷新设置
     refreshIntervalMinutes: integer("refresh_interval_minutes").default(30), // 默认刷新间隔
@@ -446,3 +448,10 @@ export type FetchQueue = typeof fetchQueue.$inferSelect;
 export type NewFetchQueue = typeof fetchQueue.$inferInsert;
 export type SyncState = typeof syncStates.$inferSelect;
 export type NewSyncState = typeof syncStates.$inferInsert;
+
+// Keep only the feed URL identity after content expires, so polling cannot restore it.
+export const expiredArticleUrls = sqliteTable("expired_article_urls", {
+  id: text("id").primaryKey(),
+  feedId: text("feed_id").notNull().references(() => feeds.id, { onDelete: "cascade" }),
+  url: text("url").notNull(),
+}, table => [uniqueIndex("expired_article_feed_url").on(table.feedId, table.url)]);

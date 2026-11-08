@@ -5,12 +5,18 @@ import SwiftUI
 
 @main
 struct CollectApp: App {
+  @AppStorage("appearance") private var appearance = "system"
   @State private var store: LibraryStore?
   @State private var startupError: String?
   @Environment(\.scenePhase) private var phase
 
   init() {
     do {
+      if UserDefaults.standard.string(forKey: "appearance") == nil {
+        let existed = FileManager.default.fileExists(
+          atPath: URL.applicationSupportDirectory.appendingPathComponent("default.store").path)
+        UserDefaults.standard.set(existed ? "dark" : "system", forKey: "appearance")
+      }
       let schema = Schema(versionedSchema: CollectSchema.self)
       let preview = ProcessInfo.processInfo.arguments.contains("--ui-testing")
       let container = try ModelContainer(
@@ -71,7 +77,7 @@ struct CollectApp: App {
             description: Text(startupError ?? "请重新启动应用后重试"))
         }
       }
-      .preferredColorScheme(.dark)
+      .preferredColorScheme(appearance == "system" ? nil : appearance == "light" ? .light : .dark)
       .tint(.orange)
       .onChange(of: phase) { _, value in
         if value == .active { Task { await store?.sync() } }

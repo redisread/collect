@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { Hono } from "hono";
 import nativeRoute from "../routes/native";
+import { extractArticle } from "../lib/extractor";
+vi.mock("../lib/extractor", () => ({ extractArticle: vi.fn() }));
 import { nativeContent } from "../lib/native-content";
 import { createTestD1 } from "./helpers/d1";
 import type { CloudflareEnv } from "../types";
@@ -14,7 +16,7 @@ beforeEach(() => {
     INSERT INTO feeds(id,user_id,title,url,feed_url) VALUES ('feed','owner','Feed','https://a.test','https://a.test/rss'),('other-feed','other','Other','https://b.test','https://b.test/rss');
     INSERT INTO articles(id,user_id,feed_id,title,url,content) VALUES ('a','owner','feed','Article','https://a.test/post','<p>Body</p>'),('b','other','other-feed','Private','https://b.test/post','private');`);
 });
-afterEach(() => database.close());
+afterEach(() => { database.close(); vi.clearAllMocks(); });
 const change = (field: string, value: boolean | number, version: number) => request("/native/articles/a", {
   method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ field, value, version }),
 });
@@ -46,4 +48,20 @@ it("removes active content and resolves image URLs", () => {
   const result = nativeContent('<script>alert(1)</script><p onclick="bad()">Hello<img src="/image.png" onerror="bad()"><a href="javascript:bad()">link</a></p>', "https://a.test/article");
   expect(result.images).toEqual(["https://a.test/image.png"]);
   expect(result.content).not.toMatch(/script|onclick|onerror|javascript/);
+});
+
+it("extracts opted-in historical articles only when explicitly opened and preserves feed fallback", async () => {
+  database.sqlite.exec("UPDATE feeds SET auto_extract=1 WHERE id='feed'");
+  vi.mocked(extractArticle).mockResolvedValue({ title: 'Article', content: '<p>Full text</p>', excerpt: '' });
+  await request('/native/articles/a');
+  expect(extractArticle).not.toHaveBeenCalled();
+  const body = await (await request('/native/articles/a?extract=true')).json() as {data:{content:string}};
+  expect(body.data.content).toContain('Full text');
+  expect(database.sqlite.prepare("SELECT is_read FROM articles WHERE id='a'").get().is_read).toBe(0);
+  await request('/native/articles/a?extract=true');
+  expect(extractArticle).toHaveBeenCalledTimes(1);
+  database.sqlite.exec("UPDATE articles SET is_extracted=0,content='<p>Fallback</p>' WHERE id='a'");
+  vi.mocked(extractArticle).mockRejectedValue(new Error('origin unavailable'));
+  const fallback = await (await request('/native/articles/a?extract=true')).json() as {data:{content:string}};
+  expect(fallback.data.content).toContain('Fallback');
 });

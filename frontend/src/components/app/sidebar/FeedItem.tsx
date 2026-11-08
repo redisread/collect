@@ -1,5 +1,5 @@
 import { useUiStore } from "@/lib/store/uiStore";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useFeedStore } from "@/lib/store/feedStore";
 import { useArticleStore } from "@/lib/store/articleStore";
 import { ContextMenu, type ContextMenuItem } from "../common/ContextMenu";
@@ -18,7 +18,18 @@ export function FeedItem({ feed, isSelected }: FeedItemProps) {
 	const setFeedToMoveId = useUiStore(state => state.setFeedToMoveId);
 	const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const openedByHold = useRef(false);
+  const holdStart = useRef({ x: 0, y: 0 });
+  const suppressClickUntil = useRef(0);
+  const cancelHold = () => {
+    if (holdTimer.current !== null) clearTimeout(holdTimer.current);
+    holdTimer.current = null;
+  };
+  useEffect(() => cancelHold, []);
+
 	const handleClick = () => {
+    if (performance.now() < suppressClickUntil.current) return;
 		const source = { type: "feed" as const, feedId: feed.id };
 		setSelectedSource(source);
 		fetchArticles(source);
@@ -30,6 +41,9 @@ export function FeedItem({ feed, isSelected }: FeedItemProps) {
 	};
 
 	const menuItems: ContextMenuItem[] = [
+    { label: "移动到文件夹", onClick: () => { useFeedStore.setState({ moveStatus: null }); setFeedToMoveId(feed.id); } },
+    { label: "全部标为已读", onClick: () => { void useFeedStore.getState().markFeedRead(feed.id); } },
+    { label: feed.autoExtract ? "关闭自动全文提取" : "开启自动全文提取", onClick: () => { void useFeedStore.getState().setAutoExtract(feed.id, !feed.autoExtract); } },
 		{
 			label: "刷新",
 			icon: "↻",
@@ -54,6 +68,7 @@ export function FeedItem({ feed, isSelected }: FeedItemProps) {
 		<>
 			<div className="flex min-w-0 items-center gap-1">
 			<button
+				data-move-feed={feed.id}
 				draggable={!movingFeedId}
 				onDragStart={event => {
 					event.dataTransfer.setData(FEED_DRAG_TYPE, feed.id);
@@ -62,6 +77,32 @@ export function FeedItem({ feed, isSelected }: FeedItemProps) {
 				title={feed.title}
 				onClick={handleClick}
 				onContextMenu={handleContextMenu}
+        onPointerDown={event => {
+          if (event.pointerType !== "touch") return;
+          cancelHold();
+          openedByHold.current = false;
+          const { clientX: x, clientY: y } = event;
+          holdStart.current = { x, y };
+          holdTimer.current = setTimeout(() => {
+            openedByHold.current = true;
+            suppressClickUntil.current = performance.now() + 800;
+            setContextMenu({ x, y });
+          }, 450);
+        }}
+        onPointerMove={event => {
+          if (Math.hypot(event.clientX - holdStart.current.x, event.clientY - holdStart.current.y) > 10) cancelHold();
+        }}
+        onPointerUp={() => {
+          cancelHold();
+          if (openedByHold.current) suppressClickUntil.current = performance.now() + 800;
+          openedByHold.current = false;
+        }}
+        onPointerCancel={cancelHold}
+        onKeyDown={event => {
+          if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+            event.preventDefault(); const rect = event.currentTarget.getBoundingClientRect(); setContextMenu({ x: rect.left, y: rect.bottom });
+          }
+        }}
 				className={cn(
 					"min-w-0 flex-1 flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-grab active:cursor-grabbing",
 					"transition-colors duration-150",
@@ -104,10 +145,6 @@ export function FeedItem({ feed, isSelected }: FeedItemProps) {
 						{feed.unreadCount}
 					</span>
 				)}
-			</button>
-			<button type="button" aria-label={`移动 ${feed.title} 到文件夹`} title="移动到文件夹"
-				data-move-feed={feed.id} onClick={() => { useFeedStore.setState({ moveStatus: null }); setFeedToMoveId(feed.id); }} className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]">
-				<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M3 7V5h6l2 2h10v12H3V7Zm5 6h8m-3-3 3 3-3 3" /></svg>
 			</button>
 			</div>
 

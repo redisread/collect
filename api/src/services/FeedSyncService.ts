@@ -1,6 +1,8 @@
+import { cleanupArticles } from "../lib/article-retention";
+import { automaticallyExtract } from "../lib/automatic-extraction";
 import { eq, and, sql, desc, asc, inArray, isNull, or } from "drizzle-orm";
 import type { DB } from "../db";
-import { feeds, articles, fetchQueue, userPreferences, FeedHealthStatus, QueueStatus } from "../db/schema";
+import { feeds, articles, expiredArticleUrls, fetchQueue, userPreferences, FeedHealthStatus, QueueStatus } from "../db/schema";
 import type { ParsedArticle, ParsedFeed } from "../lib/rss/parser";
 
 export interface SyncResult {
@@ -282,7 +284,8 @@ export class FeedSyncService {
       .from(articles)
       .where(eq(articles.feedId, feedId));
 
-    return new Set(urls.map((u) => u.url));
+    const expired = await this.db.select({ url: expiredArticleUrls.url }).from(expiredArticleUrls).where(eq(expiredArticleUrls.feedId, feedId));
+    return new Set([...urls, ...expired].map((u) => u.url));
   }
 
   /**
@@ -326,7 +329,8 @@ export class FeedSyncService {
       const inserted = await this.db.insert(articles)
         .values(articlesToInsert.slice(offset, offset + 3))
         .onConflictDoNothing()
-        .returning({ id: articles.id });
+        .returning();
+      if (feed.autoExtract) await Promise.all(inserted.map(article => automaticallyExtract(this.db, article)));
       insertedCount += inserted.length;
     }
     return insertedCount;
@@ -508,20 +512,7 @@ export class FeedSyncService {
    * Cleanup old articles based on retention policy
    */
   async cleanupOldArticles(): Promise<number> {
-    const now = new Date().toISOString();
-
-    const result = await this.db
-      .delete(articles)
-      .where(
-        and(
-          sql`${articles.retentionDate} IS NOT NULL`,
-          sql`${articles.retentionDate} < ${now}`,
-          eq(articles.isStarred, false) // Keep starred articles
-        )
-      );
-
-    // D1 returns meta.changes for delete operations
-    return (result as any).meta?.changes ?? 0;
+    return cleanupArticles(this.db);
   }
 
   /**

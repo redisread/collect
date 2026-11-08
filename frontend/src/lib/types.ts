@@ -15,6 +15,9 @@ export interface Folder {
 
 // ==================== Feed Types ====================
 export interface Feed {
+  autoExtract?: boolean;
+  starredCount?: number;
+  readLaterCount?: number;
   id: string;
   userId: string;
   folderId: string | null;
@@ -34,6 +37,7 @@ export type FeedWithUnreadCount = Feed & { unreadCount: number };
 
 // ==================== Article Types ====================
 export interface Article {
+  expiresAt?: string | null;
   id: string;
   feedId: string;
   title: string;

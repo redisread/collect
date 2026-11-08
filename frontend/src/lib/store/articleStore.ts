@@ -123,6 +123,10 @@ let preferenceRequestId = 0;
 let preferenceRequest: Promise<string> | null = null;
 let aiTranslationController: AbortController | null = null;
 
+export function isSavedGroup(source: SelectedSource): boolean {
+  return source.type === "starred" || source.type === "read_later";
+}
+
 function buildArticleUrl(source: SelectedSource, page: number, sortOrder: string, includeId?: string | null): string {
 	const params = new URLSearchParams({
 		page: String(page),
@@ -136,7 +140,7 @@ function buildArticleUrl(source: SelectedSource, page: number, sortOrder: string
 	else if (source.type === "starred") params.set("filter", "starred");
 	else if (source.type === "read_later") params.set("filter", "read_later");
 
-	if (useUiStore.getState().hideRead) {
+	if (useUiStore.getState().hideRead && !isSavedGroup(source)) {
     params.set("hideRead", "true");
     if (includeId) params.set("includeId", includeId);
   }
@@ -158,11 +162,11 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
         method: "PUT", headers: { "Content-Type": "application/json" }, credentials: "include",
         body: JSON.stringify(change), signal: AbortSignal.timeout(15_000),
       });
-      const body = await response.json() as { success: boolean };
+      const body = await response.json() as { success: boolean; data?: Article };
       if (!response.ok || !body.success) throw new Error("状态保存失败，请重试");
       set(state => ({
-        articles: state.articles.map(article => article.id === id ? { ...article, ...change } : article),
-        selectedArticle: state.selectedArticle?.id === id ? { ...state.selectedArticle, ...change } : state.selectedArticle,
+        articles: state.articles.map(article => article.id === id ? { ...article, ...change, ...(body.data ?? {}) } : article),
+        selectedArticle: state.selectedArticle?.id === id ? { ...state.selectedArticle, ...change, ...(body.data ?? {}) } : state.selectedArticle,
       }));
       const refreshed = await Promise.allSettled([
         useFeedStore.getState().fetchFeeds(), get().fetchArticles(useFeedStore.getState().selectedSource, false),
@@ -370,7 +374,7 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 
 	navigateArticle: async (direction) => {
 		const { selectedArticleId } = get();
-		const articles = get().articles.filter(article => !useUiStore.getState().hideRead || !article.isRead || article.id === selectedArticleId);
+		const articles = get().articles.filter(article => isSavedGroup(useFeedStore.getState().selectedSource) || !useUiStore.getState().hideRead || !article.isRead || article.id === selectedArticleId);
 		if (articles.length === 0) return;
 
 		const currentIndex = articles.findIndex((a) => a.id === selectedArticleId);
@@ -586,42 +590,25 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 		}
 	},
 
-	batchUpdateArticles: async (action, articleIds) => {
-		const updates: Record<string, boolean> = {};
-		switch (action) {
-			case "read":
-				updates.isRead = true;
-				break;
-			case "unread":
-				updates.isRead = false;
-				break;
-			case "star":
-				updates.isStarred = true;
-				break;
-			case "unstar":
-				updates.isStarred = false;
-				break;
-		}
-
-		// 乐观更新
-		set((state) => ({
-			articles: state.articles.map((a) =>
-				articleIds.includes(a.id) ? { ...a, ...updates } : a
-			),
-			selectedArticle:
-				state.selectedArticle && articleIds.includes(state.selectedArticle.id)
-					? { ...state.selectedArticle, ...updates }
-					: state.selectedArticle,
-		}));
-
-		// 调用批量更新 API
-		await fetch(`${API_BASE}/api/articles/batch`, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			credentials: "include",
-			body: JSON.stringify({ action, articleIds }),
-		});
-	},
+  batchUpdateArticles: async (action, articleIds) => {
+    const ids = [...new Set(articleIds)];
+    if (!ids.length || ids.some(id => get().pendingArticleIds.includes(id))) return;
+    const actions = { read: "markAsRead", unread: "markAsUnread", star: "markAsStarred", unstar: "markAsUnstarred" };
+    set(state => ({ pendingArticleIds: [...state.pendingArticleIds, ...ids], articleActionError: null }));
+    try {
+      const response = await fetch(`${API_BASE}/api/articles/batch`, {
+        method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: actions[action], articleIds: ids }), signal: AbortSignal.timeout(15_000),
+      });
+      const result = await response.json() as { success: boolean };
+      if (!response.ok || !result.success) throw new Error("批量操作失败");
+      await useFeedStore.getState().fetchFeeds();
+      await get().fetchArticles(useFeedStore.getState().selectedSource, false);
+      const updates = { read: { isRead: true }, unread: { isRead: false }, star: { isStarred: true }, unstar: { isStarred: false } }[action];
+      set(state => ({ selectedArticle: state.selectedArticle && ids.includes(state.selectedArticle.id) ? { ...state.selectedArticle, ...updates } : state.selectedArticle }));
+    } catch { set({ articleActionError: "批量操作失败，请刷新后重试" }); }
+    finally { set(state => ({ pendingArticleIds: state.pendingArticleIds.filter(id => !ids.includes(id)) })); }
+  },
 
 	// 搜索相关方法
 	setSearchQuery: (query) => set({ searchQuery: query }),

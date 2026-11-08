@@ -67,7 +67,7 @@ struct LibraryView: View {
           if !store.conflicts.isEmpty { Button("清除同步提示") { store.clearConflicts() } }
         }
       }
-      .scrollContentBackground(.hidden).background(.black)
+      .scrollContentBackground(.hidden).background(Color("ReaderBackground"))
       .navigationTitle("Collect")
       .toolbar {
         ToolbarItem(placement: .topBarTrailing) {
@@ -110,6 +110,10 @@ struct LibraryView: View {
         )
         .foregroundStyle(.secondary)
       }
-    }.contextMenu { NavigationLink("管理订阅") { FeedEditor(feed: feed) } }
+    }.contextMenu {
+      NavigationLink("移动到文件夹") { FeedEditor(feed: feed) }
+      NavigationLink("管理订阅") { FeedEditor(feed: feed) }
+      Button("全部标为已读") { store.markFeedRead(feed.id) }
+    }
   }
 }

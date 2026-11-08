@@ -3,6 +3,7 @@ import UniformTypeIdentifiers
 
 struct SettingsView: View {
   @Environment(LibraryStore.self) private var store
+  @AppStorage("appearance") private var appearance = "system"
   @State private var importing = false
   @State private var exporting = false
   @State private var document = OPMLDocument()
@@ -13,10 +14,17 @@ struct SettingsView: View {
     @Bindable var store = store
     Form {
       Section("账号") {
+        NavigationLink("个人资料") { ProfileSettingsView() }
         Text(store.session?.account.email ?? "")
         Button("退出登录", role: .destructive) { logout = true }
       }
       Section("阅读") {
+        Picker("外观", selection: $appearance) {
+          Text("跟随系统").tag("system")
+          Text("浅色").tag("light")
+          Text("深色").tag("dark")
+        }
+        NavigationLink("文章保存期限") { RetentionSettingsView() }
         Picker("翻译语言", selection: $store.language) {
           Text("简体中文").tag("zh-CN")
           Text("繁體中文").tag("zh-TW")
@@ -41,6 +49,14 @@ struct SettingsView: View {
     }.navigationTitle("设置")
       .onChange(of: store.language) { _, value in
         UserDefaults.standard.set(value, forKey: "translationLanguage")
+        Task {
+          guard let session = store.session else { return }
+          do {
+            let _: EmptyResponse = try await store.api.request(
+              "/api/settings/translation", method: "PUT", token: session.token,
+              body: JSONEncoder().encode(["targetLanguage": value]))
+          } catch { message = error.localizedDescription }
+        }
       }
       .fileImporter(isPresented: $importing, allowedContentTypes: [.xml, .data]) { result in
         Task {

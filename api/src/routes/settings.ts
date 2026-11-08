@@ -1,9 +1,10 @@
+import { RETENTION_DAYS, expiredArticles, retentionDays, cleanupArticles } from "../lib/article-retention";
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "../db";
-import { user, userPreferences } from "../db/schema";
+import { articles, user, userPreferences } from "../db/schema";
 import { DEFAULT_TARGET_LANG, SUPPORTED_LANG_CODES } from "../config/languages";
 import { authMiddleware } from "../middleware/auth";
 import type { CloudflareEnv } from "../types";
@@ -25,12 +26,13 @@ app.get("/", authMiddleware, async (c) => {
       return c.json({ success: false, error: "User not found" }, 404);
     }
 
-    const preference = await db.select({ targetLanguage: userPreferences.translationTargetLanguage })
+    const preference = await db.select({ targetLanguage: userPreferences.translationTargetLanguage, days: userPreferences.articleRetentionDays })
       .from(userPreferences).where(eq(userPreferences.userId, userId)).get();
 
     return c.json({
       success: true,
       data: {
+        articleRetentionDays: RETENTION_DAYS.includes(preference?.days as 30) ? preference!.days : 30,
         translationTargetLanguage: preference?.targetLanguage ?? DEFAULT_TARGET_LANG,
         emailDigest: {
           enabled: u.emailDigestEnabled ?? false,
@@ -58,6 +60,27 @@ app.put("/translation", authMiddleware, zValidator("json", z.object({
       set: { translationTargetLanguage: targetLanguage, updatedAt: new Date().toISOString() },
     });
   return c.json({ success: true, data: { translationTargetLanguage: targetLanguage } });
+});
+
+
+const retentionSchema = z.object({ days: z.union([z.literal(7), z.literal(30), z.literal(60), z.literal(90)]) });
+app.post("/retention/preview", authMiddleware, zValidator("json", retentionSchema), async c => {
+  const db = getDb(c.env.DB);
+  const days = c.req.valid("json").days;
+  const count = await db.select({ count: sql<number>`count(*)` }).from(articles).where(expiredArticles(c.get("userId"), days)).get();
+  return c.json({ success: true, data: { days, previousDays: await retentionDays(db, c.get("userId")), count: count?.count ?? 0 } });
+});
+app.put("/retention", authMiddleware, zValidator("json", retentionSchema.extend({ previousDays: z.number().int(), confirmed: z.boolean().default(false) })), async c => {
+  const db = getDb(c.env.DB);
+  const userId = c.get("userId");
+  const { days, previousDays, confirmed } = c.req.valid("json");
+  if (days < previousDays && !confirmed) return c.json({ success: false, error: "请先预览并确认清理范围" }, 409);
+  await db.insert(userPreferences).values({ userId }).onConflictDoNothing();
+  const changed = await db.update(userPreferences).set({ articleRetentionDays: days, updatedAt: new Date().toISOString() })
+    .where(and(eq(userPreferences.userId, userId), eq(userPreferences.articleRetentionDays, previousDays))).returning();
+  if (!changed.length) return c.json({ success: false, error: "设置已在其他设备改变，请重新加载" }, 409);
+  await cleanupArticles(db, userId);
+  return c.json({ success: true, data: { articleRetentionDays: days } });
 });
 
 // 更新邮件摘要设置

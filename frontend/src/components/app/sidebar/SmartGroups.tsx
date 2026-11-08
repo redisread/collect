@@ -43,8 +43,8 @@ export function SmartGroups() {
 
 	// 计算各分组的计数
 	const totalUnread = feeds.reduce((sum, f) => sum + (f.unreadCount ?? 0), 0);
-	const starredCount = 0;
-	const readLaterCount = 0;
+	const starredCount = feeds.reduce((sum, feed) => sum + (feed.starredCount ?? 0), 0);
+	const readLaterCount = feeds.reduce((sum, feed) => sum + (feed.readLaterCount ?? 0), 0);
 
 	const counts: Record<string, number> = {
 		all: totalUnread,

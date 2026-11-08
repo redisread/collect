@@ -14,7 +14,6 @@ settings:
     COLLECT_API_URL: https://collect.jiahongw.com
     COLLECT_APP_GROUP: group.com.example.collect
     GENERATE_INFOPLIST_FILE: YES
-    INFOPLIST_KEY_UIUserInterfaceStyle: Dark
     INFOPLIST_KEY_CollectAPIURL: $(COLLECT_API_URL)
     INFOPLIST_KEY_CollectAppGroup: $(COLLECT_APP_GROUP)
 targets:

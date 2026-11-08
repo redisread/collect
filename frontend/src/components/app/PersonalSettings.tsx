@@ -1,3 +1,5 @@
+import { ProfileSettings } from "./ProfileSettings";
+import { RetentionSettings } from "./RetentionSettings";
 import { useEffect, useRef, useState } from "react";
 import { navigateWithinReader } from "@/lib/navigation";
 import { saveTranslationLanguage } from "@/lib/settings";
@@ -6,6 +8,7 @@ import { AiTranslationSettings } from "./AiTranslationSettings";
 import { OpmlImportSettings } from "./OpmlImportSettings";
 
 export function PersonalSettings() {
+  const [tab, setTab] = useState("profile");
   const [language, setLanguage] = useState("");
   const [savedLanguage, setSavedLanguage] = useState("");
   const [loading, setLoading] = useState(true);
@@ -47,17 +50,20 @@ export function PersonalSettings() {
   }
 
   return <main className="h-dvh overflow-y-auto bg-[var(--bg-main)] text-[var(--text-primary)] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
-    <div className="mx-auto max-w-2xl px-5 py-5 sm:px-8 sm:py-10">
+    <div className="mx-auto max-w-5xl px-5 py-5 sm:px-8 sm:py-10">
       <a href="/" onClick={navigateWithinReader} className="inline-flex min-h-11 items-center gap-2 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)]">← 返回阅读</a>
       <header className="mt-4 mb-6 flex items-center gap-4">
         <img src="/collect.svg" width="40" height="40" alt="" />
         <h1 ref={heading} tabIndex={-1} className="text-2xl font-semibold tracking-tight outline-none">个人设置</h1>
       </header>
-      <nav aria-label="设置分区" className="mb-6 flex flex-wrap gap-2 text-sm">
-        <a href="#translation-preferences" className="flex min-h-11 items-center rounded-lg bg-[var(--accent-light)] px-3 text-[var(--accent)]">翻译偏好</a>
-        <a href="#ai-settings-heading" className="flex min-h-11 items-center rounded-lg px-3 hover:bg-[var(--bg-card-hover)]">AI 服务</a>
-        <a href="#opml-heading" className="flex min-h-11 items-center rounded-lg px-3 hover:bg-[var(--bg-card-hover)]">订阅导入</a>
+      <div className="grid gap-8 md:grid-cols-[180px_minmax(0,1fr)]">
+      <nav aria-label="设置分区" className="flex gap-2 overflow-x-auto md:flex-col">
+        {[["profile", "个人资料"], ["reading", "阅读"], ["ai", "AI 翻译"], ["opml", "订阅导入导出"]].map(([id, label]) => <button key={id} type="button" aria-current={tab === id ? "page" : undefined} onClick={() => setTab(id)} className={`min-h-11 shrink-0 rounded-lg px-3 text-left text-sm ${tab === id ? "bg-[var(--accent-light)] text-[var(--accent)]" : "hover:bg-[var(--bg-card-hover)]"}`}>{label}</button>)}
       </nav>
+      <div className="min-w-0">
+      <div hidden={tab !== "profile"}><ProfileSettings /></div>
+      <div hidden={tab !== "reading"}><RetentionSettings /></div>
+      <div hidden={tab !== "ai"}>
       <form id="translation-preferences" onSubmit={save} className="scroll-mt-5 border-t border-[var(--border-light)] pt-7">
         <label htmlFor="translation-language" className="block text-base font-medium">翻译目标语言</label>
         <p id="language-description" className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">全文翻译和双语阅读共用此语言，随账号在网页和 PWA 中同步。</p>
@@ -78,7 +84,9 @@ export function PersonalSettings() {
         </div>}
       </form>
       <AiTranslationSettings />
-      <OpmlImportSettings />
+      </div>
+      <div hidden={tab !== "opml"}><a href="/api/opml" download="Collect.opml" className="inline-flex min-h-11 items-center rounded-lg border border-[var(--border)] px-4">导出 OPML</a><OpmlImportSettings /></div>
+      </div></div>
     </div>
   </main>;
 }

@@ -14,7 +14,7 @@ struct AuthenticationView: View {
         Section {
           Text("Collect").font(.largeTitle.bold())
           Text("留一点时间，认真阅读。").foregroundStyle(.secondary)
-        }.listRowBackground(Color.black)
+        }.listRowBackground(Color("ReaderBackground"))
         Section {
           if registering { TextField("名字", text: $name).textContentType(.name) }
           TextField("邮箱", text: $email).textContentType(.emailAddress).keyboardType(.emailAddress)
@@ -30,7 +30,7 @@ struct AuthenticationView: View {
         Button(registering ? "已有账号，登录" : "创建新账号") { registering.toggle() }
       }
       .scrollContentBackground(.hidden)
-      .background(.black)
+      .background(Color("ReaderBackground"))
     }
   }
   private func submit() {

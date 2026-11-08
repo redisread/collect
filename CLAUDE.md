@@ -30,7 +30,7 @@ packages/     shared types/config packages
 - Root: pnpm workspace, Node >= 22.13, pnpm >= 11.24
 - API: Hono, Cloudflare Workers, D1, KV, R2, Drizzle ORM, Better Auth, Vitest
 - Frontend: Astro 7, `@astrojs/cloudflare`, React 19, Tailwind CSS 4, Workers Static Assets
-- Mobile: Swift 6.4, SwiftUI, SwiftData, WidgetKit; iPhone with iOS 26+, dark appearance
+- Mobile: Swift 6.4, SwiftUI, SwiftData, WidgetKit; iPhone with iOS 26+, system/light/dark appearance
 
 ## Commands
 
@@ -116,7 +116,7 @@ CI:
 - Keep API models in sync with `packages/types` where applicable.
 - Use SwiftUI and Apple system frameworks, with Swift 6 strict concurrency. Keep code organized by feature.
 - Use Swift Testing for unit/integration tests and XCTest for UI tests. Build the app and Widget together.
-- UI is iPhone-only, iOS 26+, dark/OLED. No UIKit imports or external Swift packages.
+- UI is iPhone-only, iOS 26+, system/light/dark appearance with OLED dark backgrounds. No UIKit imports or external Swift packages.
 - Read `docs/ios-native-design.md` for offline, synchronization, and reader behavior.
 - Configure `COLLECT_API_URL` and `COLLECT_APP_GROUP` at build time. Real-device distribution also requires the team, bundle IDs, and App Group entitlement.
 - `mobile/project.yml` is the XcodeGen source. Regenerate and commit `Collect.xcodeproj` after target/file changes.
