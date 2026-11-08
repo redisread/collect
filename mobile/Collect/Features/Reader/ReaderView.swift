@@ -13,7 +13,8 @@ struct ReaderView: View {
   @State private var progress = 0
   @State private var hasReadingPosition = false
   @State private var mode = 0
-  @State private var busy = false
+  @State private var operation: ReaderOperation?
+  @State private var showingActions = false
   @State private var message: String?
   @State private var loaded = false
   @State private var loadingArticle = true
@@ -78,10 +79,12 @@ struct ReaderView: View {
         ContentUnavailableView("暂时无法加载", systemImage: "doc.text", description: Text("请稍后重试"))
         Button("重试") { Task { await loadArticle() } }
       }
-      if let article, article.isStarred != true, article.isReadLater != true, let expiry = article.expiresAt {
+      if let article, article.isStarred != true, article.isReadLater != true,
+        let expiry = article.expiresAt
+      {
         Text("预计清理日期 \(expiry.prefix(10))").font(.caption).foregroundStyle(.secondary)
       }
-      if busy { ProgressView("处理中…").padding(8) }
+      if let operation { ProgressView(operation.title).padding(8) }
       if let message { Text(message).font(.caption).foregroundStyle(.orange).padding(8) }
     }
     .background(Color("ReaderBackground"))
@@ -94,21 +97,27 @@ struct ReaderView: View {
         Button("稍后阅读", systemImage: article?.isReadLater == true ? "bookmark.fill" : "bookmark") {
           toggle(.isReadLater)
         }
-        Menu {
-          Picker("阅读视图", selection: $mode) {
-            Text("原文").tag(0)
-            Text("双语").tag(1)
-            Text("译文").tag(2)
-          }
-          Button("翻译为 \(store.language)") { translate() }.disabled(busy)
-          Button("提取全文") { extract() }.disabled(busy)
-          Button(article?.isRead == true ? "标记未读" : "标记已读") { toggle(.isRead) }
-          if let url = article.flatMap({ URL(string: $0.url) }) {
-            ShareLink(item: url)
-            Link("浏览器打开", destination: url)
-          }
-        } label: {
-          Label("阅读操作", systemImage: "ellipsis.circle")
+        Button("阅读操作", systemImage: "ellipsis") {
+          showingActions.toggle()
+        }
+        .tint(showingActions ? .orange : .primary)
+        .popover(isPresented: $showingActions, arrowEdge: .bottom) {
+          ReaderActionsMenu(
+            mode: $mode,
+            url: article.flatMap { URL(string: $0.url) },
+            isRead: article?.isRead == true,
+            language: store.language,
+            hasBody: store.records[articleID]?.bodyHTML != nil,
+            hasBilingual: store.records[articleID]?.bilingualHTML != nil,
+            hasTranslation: store.records[articleID]?.translatedHTML != nil,
+            operation: operation,
+            message: message,
+            openArticle: {
+              if let url = article.flatMap({ URL(string: $0.url) }) { openURL(url) }
+            },
+            toggleRead: { toggle(.isRead) },
+            extract: extract,
+            translate: translate)
         }
       }
     }
@@ -156,13 +165,14 @@ struct ReaderView: View {
     Task { await store.uploadPending() }
   }
   private func translate() {
-    guard let session = store.session, let record = store.records[articleID],
+    guard operation == nil, let session = store.session, let record = store.records[articleID],
       let content = record.bodyHTML
     else { return }
     let language = store.language
-    busy = true
+    message = nil
+    operation = .translation
     Task {
-      defer { busy = false }
+      defer { operation = nil }
       do {
         let body = try JSONEncoder().encode([
           "articleId": articleID, "content": content, "targetLang": language,
@@ -178,14 +188,16 @@ struct ReaderView: View {
         record.translationLanguage = language
         try store.container.mainContext.save()
         mode = 1
+        message = "翻译完成"
       } catch { message = error.localizedDescription }
     }
   }
   private func extract() {
-    guard let session = store.session else { return }
-    busy = true
+    guard operation == nil, let session = store.session else { return }
+    message = nil
+    operation = .extraction
     Task {
-      defer { busy = false }
+      defer { operation = nil }
       do {
         let (_, status) = try await store.api.raw(
           "/api/articles/\(articleID)/extract", method: "POST", token: session.token)
@@ -198,6 +210,7 @@ struct ReaderView: View {
         store.records[articleID]?.bilingualHTML = nil
         mode = 0
         try await store.prepareArticle(articleID, extract: true)
+        message = "全文提取完成"
       } catch { message = error.localizedDescription }
     }
   }
