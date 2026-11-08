@@ -2,6 +2,7 @@ import { useArticleStore, SUPPORTED_LANGUAGES } from "@/lib/store/articleStore";
 import type { Article } from "@/lib/types";
 import { useEffect, useId, useRef } from "react";
 import { escapeHtml } from "@/lib/utils/sanitize";
+import { useAiSettingsStore } from "@/lib/store/aiSettingsStore";
 
 interface ArticleToolbarProps {
   article: Article;
@@ -14,7 +15,13 @@ export function ArticleToolbar({ article, onOpenNotes }: ArticleToolbarProps) {
     extractArticle, isExtracting, extractionError, translationError,
     translationFallback, translateInBrowser, translationMode,
     targetLanguage, isLoadingPreference, preferenceError,
+    aiProgress, pauseTranslation,
   } = useArticleStore();
+  const { profiles, activeProfileId } = useAiSettingsStore();
+  const activeProfile = profiles.find(profile => profile.id === activeProfileId);
+  const providerName = activeProfile?.name ?? "Google";
+  const canContinue = aiProgress && !aiProgress.complete && aiProgress.profileId === activeProfile?.id &&
+    aiProgress.revision === activeProfile.revision && aiProgress.targetLang === targetLanguage;
   const menuId = useId();
   const menu = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -36,10 +43,11 @@ export function ArticleToolbar({ article, onOpenNotes }: ArticleToolbarProps) {
     <div className="shrink-0 border-b border-[var(--border-light)] bg-[var(--bg-main)] px-3 py-2">
       <div className="flex flex-wrap items-center gap-1.5">
         <button onClick={() => void translateFullArticle()} disabled={busy}
-          title={`翻译为${languageLabel}，可在个人设置中修改`} aria-description={`目标语言为${languageLabel}`}
+          title={`使用${providerName}翻译为${languageLabel}，可在个人设置中修改`} aria-description={`使用${providerName}，目标语言为${languageLabel}`}
           className={buttonClass + " bg-[var(--accent-light)] text-[var(--accent)]"}>
-          {isLoadingPreference ? "同步设置…" : isExtracting ? "提取全文…" : isTranslating ? "翻译中…" : "翻译全文"}
+          {isLoadingPreference ? "同步设置…" : isExtracting ? "提取全文…" : isTranslating ? "翻译中…" : canContinue ? "继续翻译" : "翻译全文"}
         </button>
+        {translationMode === "ai" && isTranslating && <button className={buttonClass} onClick={pauseTranslation}>暂停</button>}
         <button aria-label={article.isStarred ? "取消收藏" : "收藏"} aria-pressed={article.isStarred}
           onClick={() => void toggleStarred(article.id)} className={buttonClass + " ml-auto"}>
           <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24"
@@ -80,7 +88,10 @@ export function ArticleToolbar({ article, onOpenNotes }: ArticleToolbarProps) {
           className={buttonClass + " flex items-center"} onClick={closeMenu}>打开原文 ↗</a>
       </div>
       {busy && <p role="status" className="mt-2 text-xs text-[var(--text-secondary)]">
-        {isLoadingPreference ? "正在同步翻译语言…" : isExtracting ? "正在获取完整文章…" : translationMode === "browser" ? "正在通过浏览器连接 Google 翻译…" : "正在翻译，请稍候…"}
+        {isLoadingPreference ? "正在同步翻译语言…" : isExtracting ? "正在获取完整文章…" : translationMode === "ai" ? "正在使用 AI 翻译…" : translationMode === "browser" ? "正在通过浏览器连接 Google 翻译…" : "正在翻译，请稍候…"}
+      </p>}
+      {aiProgress && <p role="status" className="mt-2 text-xs text-[var(--text-secondary)]">
+        已完成 {aiProgress.completed} / {aiProgress.total} 段{aiProgress.complete ? "，译文已保存" : "，已完成段落已保存"}
       </p>}
       {(preferenceError || translationError || extractionError) && <div role="alert" className="mt-2 text-sm text-[var(--text-secondary)]">
         <p>{preferenceError || translationError || extractionError}</p>

@@ -81,7 +81,7 @@ async function translateContentNodes(
 }
 
 /** Long runs are split at DOM boundaries so a request can never cut through a tag. */
-async function translateInlineHtml(
+export async function translateInlineHtml(
   html: string,
   translate: (text: string) => Promise<{ translated: string; detectedLang: string }>,
 ): Promise<{ html: string; text: string; detectedLang: string }> {
@@ -107,12 +107,7 @@ async function translateInlineHtml(
 }
 
 /** Translate complete inline runs, keeping sentence context and validating returned markup. */
-export async function translateHtml(
-  html: string,
-  target: string,
-  translate: (text: string) => Promise<{ translated: string; detectedLang: string }>,
-  concurrency: 1 | 2 | 4 = 4,
-) {
+export function createTranslationPlan(html: string, target: string, maxRunChars = Infinity) {
   const original = load(html, {}, false);
   original("script,style,iframe,object,embed,form").remove();
   type HtmlNode = ReturnType<CheerioAPI>[number];
@@ -138,17 +133,33 @@ export async function translateHtml(
     }
     for (const node of nodes) {
       const element = original(node);
-      if (element.is(SKIP)) {
+      if (node.type === "text" && node.data.length > maxRunChars) {
+        flush();
+        for (const chunk of splitTranslationText(node.data, maxRunChars)) {
+          const escaped = chunk.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+          if (!/\p{L}/u.test(chunk)) {
+            output.translated += escaped;
+            output.bilingual += escaped;
+            continue;
+          }
+          const token = "<!--" + marker + "-" + jobs.length + "-->";
+          jobs.push(escaped);
+          output.translated += token;
+          output.bilingual += escaped + '<span class="translation-text" lang="' + target + '" dir="auto">' + token + "</span>";
+        }
+      } else if (element.is(SKIP)) {
         flush();
         const source = original.html(node);
         output.translated += source;
         output.bilingual += source;
-      } else if (element.is(BLOCKS + ",ul,ol,table,tbody,thead,tr,figure,dl,dd,dt") || element.find(BLOCKS + "," + SKIP).length) {
+      } else if (element.is(BLOCKS + ",ul,ol,table,tbody,thead,tr,figure,dl,dd,dt") || element.find(BLOCKS + "," + SKIP).length ||
+        (node.type === "tag" && element.text().length > maxRunChars)) {
         flush();
         const children = renderChildren(element.contents().toArray());
         output.translated += original.html(element.clone().html(children.translated));
         output.bilingual += original.html(element.clone().html(children.bilingual));
       } else {
+        if (run.length && run.reduce((size, item) => size + original.html(item).length, 0) + original.html(node).length > maxRunChars) flush();
         run.push(node);
       }
     }
@@ -159,7 +170,31 @@ export async function translateHtml(
   const template = renderChildren(original.root().contents().toArray());
   if (!jobs.length) throw new TranslationError("empty_content", "未找到可翻译的文本");
   if (jobs.length > 600) throw new TranslationError("too_many_segments", "文章段落过多，暂时无法全文翻译");
-  const results: { html: string; text: string; detectedLang: string }[] = new Array(jobs.length);
+  return { jobs, marker, template };
+}
+
+export type TranslationPlan = ReturnType<typeof createTranslationPlan>;
+export interface TranslatedRun { html: string; text: string; detectedLang: string }
+
+export function renderTranslationPlan(plan: TranslationPlan, results: TranslatedRun[]) {
+  const { jobs, marker, template } = plan;
+  const pattern = new RegExp("<!--" + marker + "-(\\d+)-->", "g");
+  return {
+    segments: jobs.slice(0, results.length).map((source, i) => ({ original: load(source, {}, false).text(), translated: results[i].text })),
+    translatedHtml: template.translated.replace(pattern, (_, i) => results[Number(i)]?.html ?? jobs[Number(i)]),
+    bilingualHtml: template.bilingual.replace(pattern, (_, i) => results[Number(i)]?.html ?? ""),
+    detectedLang: results.find(result => result.detectedLang !== "auto")?.detectedLang ?? "auto",
+  };
+}
+
+export async function translateHtml(
+  html: string, target: string,
+  translate: (text: string) => Promise<{ translated: string; detectedLang: string }>,
+  concurrency: 1 | 2 | 4 = 4,
+) {
+  const plan = createTranslationPlan(html, target);
+  const { jobs } = plan;
+  const results: TranslatedRun[] = new Array(jobs.length);
   let index = 0;
   await Promise.all(Array.from({ length: Math.min(concurrency, jobs.length) }, async () => {
     while (index < jobs.length) {
@@ -167,11 +202,5 @@ export async function translateHtml(
       results[i] = await translateInlineHtml(jobs[i], translate);
     }
   }));
-  const pattern = new RegExp("<!--" + marker + "-(\\d+)-->", "g");
-  return {
-    segments: jobs.map((source, i) => ({ original: load(source, {}, false).text(), translated: results[i].text })),
-    translatedHtml: template.translated.replace(pattern, (_, i) => results[Number(i)].html),
-    bilingualHtml: template.bilingual.replace(pattern, (_, i) => results[Number(i)].html),
-    detectedLang: results.find(result => result.detectedLang !== "auto")?.detectedLang ?? "auto",
-  };
+  return renderTranslationPlan(plan, results);
 }

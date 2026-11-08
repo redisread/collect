@@ -6,6 +6,8 @@ import { readTranslationLanguage, saveTranslationLanguage } from "../lib/setting
 import { useArticleStore } from "../lib/store/articleStore";
 
 vi.mock("../lib/settings", () => ({ readTranslationLanguage: vi.fn(), saveTranslationLanguage: vi.fn() }));
+vi.mock("../components/app/AiTranslationSettings", () => ({ AiTranslationSettings: () => null }));
+vi.mock("../lib/store/aiSettingsStore", () => ({ useAiSettingsStore: { getState: () => ({ load: async () => {}, profiles: [], activeProfileId: null }) } }));
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 it("loads the account preference, preserves failed edits, and confirms a successful save", async () => {

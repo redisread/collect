@@ -66,6 +66,8 @@ export function ArticleReader() {
 		selectArticle,
 		detailError,
 		displayedLanguages,
+		displayedKeys,
+		translationViewRequest,
 		isLoadingDetail,
 		translations,
 		extractArticle,
@@ -75,6 +77,7 @@ export function ArticleReader() {
 		loadAnnotations,
 	} = useArticleStore();
 	const targetLanguage = displayedLanguages[selectedArticleId ?? ""] ?? "zh-CN";
+	const translationKey = displayedKeys[selectedArticleId ?? ""] ?? `${selectedArticleId}:${targetLanguage}`;
 	const { feeds } = useFeedStore();
 	const contentRef = useRef<HTMLDivElement>(null);
 	const articleContentRef = useRef<HTMLDivElement>(null);
@@ -265,7 +268,7 @@ export function ArticleReader() {
 	// 监听视图模式切换事件（来自 VimShortcuts）
 	useEffect(() => {
 		const handleToggleViewMode = () => {
-			if (translations[`${selectedArticle?.id}:${targetLanguage}`]) {
+			if (translations[translationKey]) {
 				setViewMode((prev) => {
 					if (prev === "original") return "translated";
 					if (prev === "translated") return "both";
@@ -276,17 +279,17 @@ export function ArticleReader() {
 
 		window.addEventListener("toggle-view-mode", handleToggleViewMode);
 		return () => window.removeEventListener("toggle-view-mode", handleToggleViewMode);
-	}, [selectedArticle?.id, translations, targetLanguage]);
+	}, [translationKey, translations]);
 
-	const translation = selectedArticle ? translations[`${selectedArticle.id}:${targetLanguage}`] : null;
-	const hasTranslation = !!translation;
+	const translation = selectedArticle ? translations[translationKey] : null;
+	const hasTranslation = !!translation && (translation.completed === undefined || translation.completed > 0);
 	const hasContent = !!selectedArticle?.content;
 
 	useEffect(() => {
 		const changedArticle = viewArticleId.current !== selectedArticle?.id;
 		viewArticleId.current = selectedArticle?.id;
-		setViewMode(!changedArticle && translation ? "both" : "original");
-	}, [translation, targetLanguage, selectedArticle?.id]);
+		setViewMode(!changedArticle && hasTranslation ? "both" : "original");
+	}, [hasTranslation, translationKey, translationViewRequest, selectedArticle?.id]);
 
 	if (detailError) return (
 		<div role="alert" className="flex flex-1 flex-col items-center justify-center gap-4 px-6">

@@ -7,6 +7,8 @@ import foldersRoute from "./routes/folders";
 import opmlRoute from "./routes/opml";
 import refreshRoute from "./routes/refresh";
 import settingsRoute from "./routes/settings";
+import aiProfilesRoute from "./routes/ai-profiles";
+import aiTranslateRoute from "./routes/ai-translate";
 import smartFoldersRoute from "./routes/smart-folders";
 import statsRoute from "./routes/stats";
 import translateRoute from "./routes/translate";
@@ -57,6 +59,8 @@ export function createApiApp() {
   app.route("/api/refresh", refreshRoute);
   app.route("/api/translate", translateRoute);
   app.route("/api/settings", settingsRoute);
+  app.route("/api/ai-profiles", aiProfilesRoute);
+  app.route("/api/ai-translate", aiTranslateRoute);
   app.route("/api/smart-folders", smartFoldersRoute);
   app.route("/api/annotations", annotationsRoute);
   app.route("/api/stats", statsRoute);

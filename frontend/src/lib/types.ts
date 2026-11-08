@@ -70,6 +70,9 @@ export interface TranslationSegment {
 }
 
 export interface TranslationResult {
+  completed?: number;
+  total?: number;
+  complete?: boolean;
   translatedHtml?: string;
   bilingualHtml?: string;
   original: string;
