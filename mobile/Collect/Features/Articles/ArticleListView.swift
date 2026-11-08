@@ -111,10 +111,13 @@ struct ArticleListView: View {
         }
       }
       .onDisappear { if let scrollID { UserDefaults.standard.set(scrollID, forKey: positionKey) } }
-      .scrollContentBackground(.hidden).background(.black)
+      .scrollContentBackground(.hidden).background(Color("ReaderBackground"))
       .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
       .searchable(text: $search, prompt: "搜索已同步的文章")
-      .toolbar { Toggle("隐藏已读", systemImage: "line.3.horizontal.decrease", isOn: $hideRead) }
+      .toolbar {
+        if case .feed(let id) = scope { Button("全部标为已读") { store.markFeedRead(id) } }
+        Toggle("隐藏已读", systemImage: "line.3.horizontal.decrease", isOn: $hideRead)
+      }
       .overlay {
         if rows.isEmpty {
           ContentUnavailableView("暂无文章", systemImage: "tray", description: Text("同步订阅或调整筛选后继续阅读"))

@@ -1,6 +1,27 @@
 import XCTest
 
 final class CollectUITests: XCTestCase {
+  @MainActor func testLightAppearanceAndBulkRead() {
+    let app = XCUIApplication()
+    app.launchArguments = ["--ui-testing", "-appearance", "light"]
+    app.launch()
+    XCTAssertTrue(app.navigationBars["Collect"].waitForExistence(timeout: 10))
+    app.buttons["unclassified-folder"].tap()
+    app.staticTexts["阅读笔记"].tap()
+    app.buttons["全部标为已读"].tap()
+    app.navigationBars.buttons.firstMatch.tap()
+    XCTAssertTrue(app.buttons["未读, 0"].waitForExistence(timeout: 5))
+    app.staticTexts["阅读笔记"].tap()
+    app.staticTexts["给阅读留一点时间"].tap()
+    XCTAssertTrue(app.webViews.staticTexts["这是一篇本地测试文章。"].waitForExistence(timeout: 10))
+    let visible = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: app.webViews.staticTexts["这是一篇本地测试文章。"])
+    XCTAssertEqual(XCTWaiter.wait(for: [visible], timeout: 10), .completed)
+    let screenshot = XCTAttachment(screenshot: app.screenshot())
+    screenshot.name = "Light reader"
+    screenshot.lifetime = .keepAlways
+    add(screenshot)
+  }
+
   @MainActor func testSubscriptionManagementEntry() {
     let app = XCUIApplication()
     app.launchArguments = ["--ui-testing"]

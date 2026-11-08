@@ -3,6 +3,7 @@ import SwiftUI
 import WebKit
 
 struct ReaderView: View {
+  @Environment(\.colorScheme) private var colorScheme
   @Environment(LibraryStore.self) private var store
   @Environment(\.openURL) private var openURL
   @Environment(\.scenePhase) private var phase
@@ -39,7 +40,7 @@ struct ReaderView: View {
     }
     return ReaderDocument.html(
       title: article?.title ?? "", content: CacheFiles.inlineImages(body, record: record),
-      fontSize: fontSize)
+      fontSize: fontSize, dark: colorScheme == .dark)
   }
   var body: some View {
     VStack(spacing: 0) {
@@ -72,12 +73,15 @@ struct ReaderView: View {
           }
       } else {
         ContentUnavailableView("正文尚未缓存", systemImage: "doc.text", description: Text("联网后重试下载正文"))
-        Button("重试") { Task { await store.prepareArticle(articleID) } }
+        Button("重试") { Task { await store.prepareArticle(articleID, extract: true) } }
+      }
+      if let article, article.isStarred != true, article.isReadLater != true, let expiry = article.expiresAt {
+        Text("预计清理日期 \(expiry.prefix(10))").font(.caption).foregroundStyle(.secondary)
       }
       if busy { ProgressView("处理中…").padding(8) }
       if let message { Text(message).font(.caption).foregroundStyle(.orange).padding(8) }
     }
-    .background(.black)
+    .background(Color("ReaderBackground"))
     .navigationBarTitleDisplayMode(.inline)
     .toolbar {
       ToolbarItemGroup(placement: .bottomBar) {
@@ -108,7 +112,7 @@ struct ReaderView: View {
     .task {
       progress = article?.readingProgress ?? 0
       hasReadingPosition = true
-      await store.prepareArticle(articleID)
+      await store.prepareArticle(articleID, extract: true)
       if store.records[articleID]?.bodyHTML != nil {
         store.change(articleID, field: .isRead, value: 1)
         await store.sync()
@@ -179,7 +183,7 @@ struct ReaderView: View {
         store.records[articleID]?.translatedHTML = nil
         store.records[articleID]?.bilingualHTML = nil
         mode = 0
-        await store.prepareArticle(articleID)
+        await store.prepareArticle(articleID, extract: true)
       } catch { message = error.localizedDescription }
     }
   }

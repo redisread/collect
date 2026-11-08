@@ -23,7 +23,7 @@ struct OfflineView: View {
       }
       Section("存储") {
         Stepper("未读缓存上限 \(store.cacheLimit) 篇", value: $store.cacheLimit, in: 20...1000, step: 20)
-        Text("普通已读文章缓存保留 30 天。收藏与稍后阅读文章持续保留。")
+        Text("普通已读文章缓存保留 \(store.articleRetentionDays) 天。收藏与稍后阅读文章持续保留。")
           .font(.footnote).foregroundStyle(.secondary)
         Button("清理离线缓存", role: .destructive) { clear = true }
       }

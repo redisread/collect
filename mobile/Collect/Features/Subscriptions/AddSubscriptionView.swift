@@ -22,7 +22,7 @@ struct AddSubscriptionView: View {
         }
         if busy { ProgressView("正在保存…") }
         if let error { Text(error).foregroundStyle(.red) }
-      }.scrollContentBackground(.hidden).background(.black)
+      }.scrollContentBackground(.hidden).background(Color("ReaderBackground"))
         .navigationTitle("添加")
         .toolbar { Button("关闭") { dismiss() } }
     }

@@ -20,7 +20,9 @@
     func send(_ request: URLRequest) async throws -> (Data, Int) {
       let path = request.url?.path ?? ""
       let data: Any
-      if path == "/api/feeds" {
+      if path == "/api/settings" {
+        data = ["articleRetentionDays": 30, "translationTargetLanguage": "zh-CN"]
+      } else if path == "/api/feeds" {
         data = [["id": "feed", "title": "阅读笔记", "feedUrl": "https://example.com/rss"]]
       } else if path == "/api/folders" {
         data = [[String: String]]()

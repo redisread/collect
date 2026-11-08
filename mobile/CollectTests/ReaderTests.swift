@@ -29,3 +29,12 @@ struct ReaderTests {
     #expect(stored.value == 1)
   }
 }
+
+struct AppearanceTests {
+  @Test func lightReaderUsesLightColorScheme() {
+    let html = ReaderDocument.html(
+      title: "Title", content: "<p>Body</p>", fontSize: 19, dark: false)
+    #expect(html.contains("color-scheme:light"))
+    #expect(html.contains("background:#fff;color:#222"))
+  }
+}

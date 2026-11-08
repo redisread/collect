@@ -22,6 +22,7 @@ final class LibraryStore {
   private var syncRequested = false
   var records: [String: CachedArticle] = [:]
   var cacheLimit = UserDefaults.standard.object(forKey: "offlineLimit") as? Int ?? 100
+  var articleRetentionDays = 30
   var language = UserDefaults.standard.string(forKey: "translationLanguage") ?? "zh-CN"
   private var context: ModelContext { container.mainContext }
 
@@ -68,6 +69,7 @@ final class LibraryStore {
 
   func reloadLocal() throws {
     guard let owner = session?.account.id else { return }
+    articleRetentionDays = UserDefaults.standard.object(forKey: "retention-\(owner)") as? Int ?? 30
     let stored = try context.fetch(
       FetchDescriptor<CachedArticle>(predicate: #Predicate { $0.owner == owner }))
     let changes = try pending(owner)
@@ -248,6 +250,14 @@ final class LibraryStore {
       try context.save()
       try reloadLocal()
       status = "同步完成 · \(incoming.count) 篇"
+      do {
+        let preferences: ReaderPreferences = try await api.request(
+          "/api/settings", token: saved.token)
+        guard session?.token == saved.token else { return }
+        articleRetentionDays = preferences.articleRetentionDays
+        UserDefaults.standard.set(articleRetentionDays, forKey: "retention-\(saved.account.id)")
+        language = preferences.translationTargetLanguage
+      } catch { self.error = "阅读设置同步失败，稍后重试" }
       await cacheArticles(saved)
     } catch is CancellationError { status = "同步已暂停" } catch {
       try? reloadLocal()
@@ -256,13 +266,50 @@ final class LibraryStore {
     }
   }
 
-  func prepareArticle(_ id: String) async {
-    guard let saved = session, let record = records[id], record.bodyHTML == nil else { return }
+  func markFeedRead(_ feedID: String) {
+    guard let owner = session?.account.id else { return }
+    do {
+      let queued = try pending(owner).filter { $0.field == ArticleField.isRead.rawValue }
+      let byArticle = Dictionary(uniqueKeysWithValues: queued.map { ($0.articleID, $0) })
+      for article in articles where article.feedId == feedID && article.isRead != true {
+        if let existing = byArticle[article.id] {
+          existing.value = 1
+        } else {
+          context.insert(
+            PendingChange(
+              owner: owner, articleID: article.id, field: .isRead, value: 1,
+              version: article.readVersion))
+        }
+        records[article.id]?.readAt = .now
+      }
+      try context.save()
+      try reloadLocal()
+      Task { await sync() }
+    } catch { self.error = error.localizedDescription }
+  }
+
+  func applyProfile(_ account: Account, token: String) throws {
+    guard session?.token == token, session?.account.id == account.id else { return }
+    let saved = SavedSession(token: token, account: account)
+    try SessionVault.save(saved)
+    session = saved
+  }
+
+  func prepareArticle(_ id: String, extract: Bool = false) async {
+    guard let saved = session, let record = records[id] else { return }
+    let shouldExtract =
+      extract && feeds.first(where: { $0.id == (try? record.decode().feedId) })?.autoExtract == true
+    guard record.bodyHTML == nil || shouldExtract else { return }
     let generation = cacheGeneration
     do {
-      let body: ArticleDTO = try await api.request("/api/native/articles/\(id)", token: saved.token)
+      let body: ArticleDTO = try await api.request(
+        "/api/native/articles/\(id)" + (shouldExtract ? "?extract=true" : ""), token: saved.token)
       guard session?.token == saved.token else { return }
       guard generation == cacheGeneration, records[id] === record else { return }
+      if record.bodyHTML != body.content {
+        record.translatedHTML = nil
+        record.bilingualHTML = nil
+      }
       record.bodyHTML = body.content ?? ""
       record.imageURLs = body.images ?? []
       record.cachedAt = .now
@@ -290,7 +337,7 @@ final class LibraryStore {
       }
     }
     do {
-      let cutoff = Date.now.addingTimeInterval(-30 * 86400)
+      let cutoff = Date.now.addingTimeInterval(-Double(articleRetentionDays) * 86400)
       for article in articles where !ids.contains(article.id) {
         guard let record = records[article.id] else { continue }
         if article.isRead != true || (record.readAt ?? record.cachedAt ?? .now) < cutoff {
