@@ -58,3 +58,22 @@ it("keeps saved partial output and exposes upstream errors for manual continuati
   expect(useArticleStore.getState().translationError).toBe("额度不足");
   expect(useArticleStore.getState().translations["a:zh-CN:ai:profile:v1"].segments).toHaveLength(1);
 });
+
+it("restores and continues an explicitly requested summary without extracting full content", async () => {
+  useArticleStore.setState({ selectedArticle: { id: "a", content: null, summary: "Hello & world" } as Article });
+  const fetchMock = vi.fn().mockImplementation(async (url: string, options: { body?: string }) => {
+    if (url === "/api/settings") return response({ translationTargetLanguage: "zh-CN" });
+    if (url === "/api/ai-profiles") return response({ profiles: [profile], activeProfileId: profile.id });
+    if (url === "/api/ai-translate/start") {
+      expect(JSON.parse(options.body!).content).toBe("<p>Hello &amp; world</p>");
+      return response(progress(1));
+    }
+    if (url.endsWith("/step")) return response(progress(2));
+    throw new Error("unexpected request: " + url);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  await useArticleStore.getState().restoreAiTranslation();
+  expect(useArticleStore.getState().aiProgress?.completed).toBe(1);
+  expect(await useArticleStore.getState().continueTranslation()).toBe(true);
+  expect(fetchMock.mock.calls.some(call => call[0].includes("/extract"))).toBe(false);
+});

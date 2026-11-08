@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { readTranslationLanguage } from "../settings";
 import { useAiSettingsStore, type AiProfile } from "./aiSettingsStore";
 import { aiCacheKey, continueAiTranslation, loadAiProgress, type AiProgress } from "../ai-translation";
+import { escapeHtml } from "../utils/sanitize";
 import type {
 	Article,
 	ArticleListItem,
@@ -89,6 +90,7 @@ interface ArticleStore {
 	navigateArticle: (direction: "next" | "prev") => Promise<void>;
 	translateArticle: (articleId: string, content: string, targetLang?: string, profile?: AiProfile | null) => Promise<boolean>;
 	translateFullArticle: () => Promise<boolean>;
+	continueTranslation: () => Promise<boolean>;
 	translateInBrowser: () => Promise<boolean>;
 	clearTranslation: (articleId: string) => void;
 	setTargetLanguage: (lang: string) => void;
@@ -183,7 +185,9 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 	},
 	restoreAiTranslation: async () => {
 		const { selectedArticle } = get();
-		if (!selectedArticle?.content || get().isTranslating) return;
+		if (!selectedArticle || get().isTranslating) return;
+		const content = selectedArticle.content || (selectedArticle.summary ? `<p>${escapeHtml(selectedArticle.summary)}</p>` : "");
+		if (!content) return;
 		const detailId = detailRequestId;
 		const translationId = translationRequestId;
 		try {
@@ -191,7 +195,7 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 			const { profiles, activeProfileId } = useAiSettingsStore.getState();
 			const profile = profiles.find(item => item.id === activeProfileId);
 			if (!profile || detailId !== detailRequestId) return;
-			const progress = await loadAiProgress(selectedArticle.id, selectedArticle.content, lang, profile, true);
+			const progress = await loadAiProgress(selectedArticle.id, content, lang, profile, true);
 			if (!progress || detailId !== detailRequestId || translationId !== translationRequestId ||
 				get().selectedArticleId !== selectedArticle.id || get().isTranslating ||
 				useAiSettingsStore.getState().activeProfileId !== profile.id) return;
@@ -199,7 +203,7 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 			set(state => ({ aiProgress: progress, translationMode: "ai",
 				displayedLanguages: { ...state.displayedLanguages, [selectedArticle.id]: lang },
 				displayedKeys: { ...state.displayedKeys, [selectedArticle.id]: key },
-				translations: { ...state.translations, [key]: { ...progress, original: selectedArticle.content!, translated: progress.segments?.map(segment => segment.translated).join("\n\n") ?? "" } },
+				translations: { ...state.translations, [key]: { ...progress, original: content, translated: progress.segments?.map(segment => segment.translated).join("\n\n") ?? "" } },
 			}));
 		} catch { /* Translation remains available for an explicit retry. */ }
 	},
@@ -382,6 +386,13 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 		const content = selectedArticle.content || (await get().extractArticle(selectedArticle.id))?.content;
 		if (!content || requestId !== detailRequestId) return false;
 		return get().translateArticle(selectedArticle.id, content, targetLanguage, profile);
+	},
+	continueTranslation: async () => {
+		const { selectedArticleId, displayedKeys, translations, isTranslating, isLoadingPreference } = get();
+		if (!selectedArticleId || isTranslating || isLoadingPreference) return false;
+		const content = translations[displayedKeys[selectedArticleId]]?.original;
+		if (!content) return false;
+		return get().translateArticle(selectedArticleId, content);
 	},
 
 	translateArticle: async (articleId, content, targetLang, profileOverride) => {

@@ -15,7 +15,7 @@ export function ArticleToolbar({ article, onOpenNotes }: ArticleToolbarProps) {
     extractArticle, isExtracting, extractionError, translationError,
     translationFallback, translateInBrowser, translationMode,
     targetLanguage, isLoadingPreference, preferenceError,
-    aiProgress, pauseTranslation,
+    aiProgress, pauseTranslation, continueTranslation,
   } = useArticleStore();
   const { profiles, activeProfileId } = useAiSettingsStore();
   const activeProfile = profiles.find(profile => profile.id === activeProfileId);
@@ -42,7 +42,7 @@ export function ArticleToolbar({ article, onOpenNotes }: ArticleToolbarProps) {
   return (
     <div className="shrink-0 border-b border-[var(--border-light)] bg-[var(--bg-main)] px-3 py-2">
       <div className="flex flex-wrap items-center gap-1.5">
-        <button onClick={() => void translateFullArticle()} disabled={busy}
+        <button onClick={() => void (canContinue ? continueTranslation() : translateFullArticle())} disabled={busy}
           title={`使用${providerName}翻译为${languageLabel}，可在个人设置中修改`} aria-description={`使用${providerName}，目标语言为${languageLabel}`}
           className={buttonClass + " bg-[var(--accent-light)] text-[var(--accent)]"}>
           {isLoadingPreference ? "同步设置…" : isExtracting ? "提取全文…" : isTranslating ? "翻译中…" : canContinue ? "继续翻译" : "翻译全文"}
@@ -58,6 +58,7 @@ export function ArticleToolbar({ article, onOpenNotes }: ArticleToolbarProps) {
         <button ref={trigger} popoverTarget={menuId} aria-label="更多文章操作"
           aria-haspopup="menu" className={buttonClass}>•••</button>
       </div>
+      <p className="mt-1 break-words text-xs text-[var(--text-tertiary)]">翻译服务 · {providerName}</p>
       <div ref={menu} id={menuId} popover="auto" role="menu" aria-label="文章操作"
         className="article-actions rounded-xl border border-[var(--border)] bg-[var(--bg-main)] p-1.5 text-[var(--text-primary)] shadow-[var(--shadow-md)]"
         onToggle={event => {
