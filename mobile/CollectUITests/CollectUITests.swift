@@ -158,6 +158,11 @@ final class CollectUITests: XCTestCase {
     app.staticTexts["阅读笔记"].press(forDuration: 1)
     app.buttons["管理订阅"].tap()
     XCTAssertTrue(app.buttons["保存"].waitForExistence(timeout: 5))
+    app.buttons["取消订阅"].tap()
+    XCTAssertTrue(app.staticTexts["取消订阅并清理普通文章？收藏和稍后阅读会保留。"].waitForExistence(timeout: 5))
+    app.buttons["确认取消订阅"].tap()
+    XCTAssertTrue(app.navigationBars["Collect"].waitForExistence(timeout: 5))
+    XCTAssertFalse(app.staticTexts["阅读笔记"].exists)
   }
 
   @MainActor func testRestoresReadingProgress() {

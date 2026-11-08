@@ -46,8 +46,10 @@ struct FeedEditor: View {
         folder = feed.folderId ?? ""
         autoExtract = feed.autoExtract == true
       }
-      .confirmationDialog("取消订阅并清理普通文章？收藏和稍后阅读会保留。", isPresented: $deleting) {
-        Button("取消订阅", role: .destructive) {
+      .confirmationDialog(
+        "取消订阅并清理普通文章？收藏和稍后阅读会保留。", isPresented: $deleting, titleVisibility: .visible
+      ) {
+        Button("确认取消订阅", role: .destructive) {
           saving = true
           Task {
             defer { saving = false }

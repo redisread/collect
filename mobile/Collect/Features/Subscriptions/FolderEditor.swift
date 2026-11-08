@@ -18,7 +18,7 @@ struct FolderEditor: View {
       if let error { Text(error).foregroundStyle(.red) }
     }.disabled(saving).navigationTitle(folder.name)
       .onAppear { name = folder.name }
-      .confirmationDialog("删除这个文件夹？", isPresented: $deleting) {
+      .confirmationDialog("删除这个文件夹？", isPresented: $deleting, titleVisibility: .visible) {
         Button("删除", role: .destructive) { perform("DELETE") }
       }
   }

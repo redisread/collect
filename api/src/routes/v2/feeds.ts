@@ -331,7 +331,7 @@ feedsV2Route.post("/:id/refresh", async (c) => {
       .from(feeds)
       .where(and(eq(feeds.id, id), eq(feeds.userId, userId)));
 
-    if (!feed) {
+    if (!feed || feed.unsubscribedAt) {
       return c.json({ success: false, error: "订阅源不存在" }, 404);
     }
 

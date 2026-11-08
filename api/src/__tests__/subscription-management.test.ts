@@ -309,3 +309,14 @@ it("restores cancelled subscriptions through the v2 caller as well", async () =>
       .get().is_starred,
   ).toBe(1);
 });
+
+it("rejects legacy refresh on an archived source and supports account deletion cascades", async () => {
+  await request("/feeds/f", undefined, "DELETE");
+  expect((await request("/v2/feeds/f/refresh")).status).toBe(404);
+  database.sqlite.exec(
+    "DELETE FROM user WHERE id='other'; DELETE FROM user WHERE id='owner';",
+  );
+  expect(
+    database.sqlite.prepare("SELECT count(*) AS n FROM native_changes").get().n,
+  ).toBe(0);
+});
