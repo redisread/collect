@@ -16,6 +16,7 @@ struct ReaderView: View {
   @State private var busy = false
   @State private var message: String?
   @State private var loaded = false
+  @State private var loadingArticle = true
   @ScaledMetric(relativeTo: .body) private var fontSize = 19.0
 
   init(articleID: String) {
@@ -71,9 +72,11 @@ struct ReaderView: View {
 
             } catch is CancellationError {} catch { message = error.localizedDescription }
           }
+      } else if loadingArticle {
+        ProgressView("正在加载…").frame(maxWidth: .infinity, maxHeight: .infinity)
       } else {
-        ContentUnavailableView("正文尚未缓存", systemImage: "doc.text", description: Text("联网后重试下载正文"))
-        Button("重试") { Task { await store.prepareArticle(articleID, extract: true) } }
+        ContentUnavailableView("暂时无法加载", systemImage: "doc.text", description: Text("请稍后重试"))
+        Button("重试") { Task { await loadArticle() } }
       }
       if let article, article.isStarred != true, article.isReadLater != true, let expiry = article.expiresAt {
         Text("预计清理日期 \(expiry.prefix(10))").font(.caption).foregroundStyle(.secondary)
@@ -112,11 +115,7 @@ struct ReaderView: View {
     .task {
       progress = article?.readingProgress ?? 0
       hasReadingPosition = true
-      await store.prepareArticle(articleID, extract: true)
-      if store.records[articleID]?.bodyHTML != nil {
-        store.change(articleID, field: .isRead, value: 1)
-        await store.uploadPending()
-      }
+      await loadArticle()
     }
     .task(id: progress) {
       do { try await Task.sleep(for: .seconds(2)) } catch { return }
@@ -131,6 +130,22 @@ struct ReaderView: View {
     }
     .onChange(of: navigator.externalURL) { _, url in if let url { openURL(url) } }
   }
+  private func loadArticle() async {
+    loadingArticle = true
+    message = nil
+    defer { loadingArticle = false }
+    do {
+      try await store.prepareArticle(articleID, extract: true)
+    } catch is CancellationError {
+      return
+    } catch {
+      if store.records[articleID]?.bodyHTML != nil { message = "暂时无法加载全文，请稍后重试" }
+    }
+    guard !Task.isCancelled, store.records[articleID]?.bodyHTML != nil else { return }
+    store.change(articleID, field: .isRead, value: 1)
+    await store.uploadPending()
+  }
+
   private func saveProgress() {
     guard hasReadingPosition, store.records[articleID]?.bodyHTML != nil else { return }
     store.change(articleID, field: .readingProgress, value: progress)
@@ -145,7 +160,6 @@ struct ReaderView: View {
       let content = record.bodyHTML
     else { return }
     let language = store.language
-    let cacheRevision = store.offlineRevision
     busy = true
     Task {
       defer { busy = false }
@@ -156,7 +170,7 @@ struct ReaderView: View {
         let result: TranslationResponse = try await store.api.request(
           "/api/translate", method: "POST", token: session.token, body: body)
         guard store.session?.token == session.token, store.records[articleID] === record,
-          store.offlineRevision == cacheRevision, record.bodyHTML == content,
+          record.bodyHTML == content,
           store.language == language
         else { return }
         record.translatedHTML = result.translatedHtml
@@ -183,7 +197,7 @@ struct ReaderView: View {
         store.records[articleID]?.translatedHTML = nil
         store.records[articleID]?.bilingualHTML = nil
         mode = 0
-        await store.prepareArticle(articleID, extract: true)
+        try await store.prepareArticle(articleID, extract: true)
       } catch { message = error.localizedDescription }
     }
   }

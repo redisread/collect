@@ -51,7 +51,6 @@ struct StoreTests {
       restoreSession: false)
     store.session = SavedSession(
       token: "test", account: Account(id: "owner", name: "Owner", email: "test@example.invalid"))
-    store.cachePaused = true
     await store.sync()
     #expect(Set(store.articles.map(\.id)) == ["sample", "folder-article"])
     store.change("sample", field: .isStarred, value: 1)
@@ -87,5 +86,80 @@ struct BulkReadTests {
     #expect(pending.first?.articleID == "a")
     #expect(pending.first?.version == 2)
     #expect(store.articles.first(where: { $0.id == "c" })?.isRead == false)
+  }
+}
+
+actor RecoveringBodyTransport: HTTPTransport {
+  private let preview = PreviewTransport()
+  private var bodyAvailable = false
+  private var paths: [String] = []
+
+  func reconnect() { bodyAvailable = true }
+  func requests() -> [String] { paths }
+
+  func send(_ request: URLRequest) async throws -> (Data, Int) {
+    let path = request.url!.path
+    paths.append(path)
+    if request.httpMethod == "GET", path.hasPrefix("/api/native/articles/"), !bodyAvailable {
+      throw URLError(.notConnectedToInternet)
+    }
+    return try await preview.send(request)
+  }
+}
+
+extension StoreTests {
+  @Test @MainActor func legacyPauseIsRemovedAndLimitIsRetained() async throws {
+    let suite = "cache-migration-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    defaults.set(true, forKey: "offlinePaused")
+    defaults.set(1, forKey: "offlineLimit")
+    let container = try ModelContainer(
+      for: Schema(versionedSchema: CollectSchema.self),
+      configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+    let store = LibraryStore(
+      container: container,
+      api: APIClient(baseURL: URL(string: "https://example.com")!, transport: PreviewTransport()),
+      restoreSession: false, defaults: defaults)
+    let session = SavedSession(
+      token: "test", account: Account(id: "owner", name: "Owner", email: "test@example.invalid"))
+    store.session = session
+    await store.sync()
+    store.change("folder-article", field: .isRead, value: 0)
+    await store.cacheArticles(session)?.value
+    #expect(defaults.object(forKey: "offlinePaused") == nil)
+    #expect(defaults.integer(forKey: "offlineLimit") == 1)
+    #expect(store.records.values.filter { $0.bodyHTML != nil }.count == 1)
+    #expect(store.articles.allSatisfy { $0.isRead != true })
+  }
+
+  @Test @MainActor func backgroundFailureIsSilentAndReconnectPreparesBodiesWithoutRefreshing() async throws {
+    let container = try ModelContainer(
+      for: Schema(versionedSchema: CollectSchema.self),
+      configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+    let transport = RecoveringBodyTransport()
+    let store = LibraryStore(
+      container: container,
+      api: APIClient(baseURL: URL(string: "https://example.com")!, transport: transport),
+      restoreSession: false)
+    store.session = SavedSession(
+      token: "test", account: Account(id: "owner", name: "Owner", email: "test@example.invalid"))
+
+    await store.sync()
+    let session = try #require(store.session)
+    await store.cacheArticles(session)?.value
+    #expect(store.error == nil)
+    #expect(store.records["sample"]?.bodyHTML == nil)
+    await #expect(throws: URLError.self) { try await store.prepareArticle("sample") }
+    #expect(store.error == nil)
+
+    store.change("sample", field: .isStarred, value: 1)
+    await transport.reconnect()
+    await store.networkAvailable()
+    #expect(store.records["sample"]?.bodyHTML != nil)
+    #expect(store.articles.first(where: { $0.id == "sample" })?.isStarred == true)
+    #expect(try container.mainContext.fetchCount(FetchDescriptor<PendingChange>()) == 0)
+    #expect(await transport.requests().filter { $0 == "/api/native/sync" }.count == 1)
+    #expect(store.error == nil)
   }
 }

@@ -50,11 +50,6 @@ struct LibraryView: View {
           }
         }
         Section {
-          NavigationLink {
-            OfflineView()
-          } label: {
-            Label("离线阅读", systemImage: "arrow.down.circle")
-          }
           if !store.status.isEmpty { Text(store.status).font(.caption).foregroundStyle(.secondary) }
           if let error = store.error { Text(error).font(.caption).foregroundStyle(.red) }
           ForEach(Array(store.conflicts.enumerated()), id: \.offset) { _, text in

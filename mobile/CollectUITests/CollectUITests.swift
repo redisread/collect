@@ -90,9 +90,12 @@ final class CollectUITests: XCTestCase {
     screenshot.name = "Settings toolbar"
     screenshot.lifetime = .keepAlways
     add(screenshot)
+    XCTAssertFalse(app.buttons["离线阅读"].exists)
     settings.tap()
     XCTAssertTrue(app.navigationBars["设置"].waitForExistence(timeout: 5))
     XCTAssertTrue(app.buttons["个人资料"].exists)
+    XCTAssertFalse(app.buttons["离线缓存"].exists)
+    XCTAssertTrue(app.buttons["文章保存期限"].exists)
   }
 
   @MainActor func testFolderNavigationAndExpansion() {
