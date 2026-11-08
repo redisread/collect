@@ -19,8 +19,14 @@ export function nativeContent(html: string, baseURL: string) {
     }
     if (element.tagName === "img") {
       try {
-        const url = new URL(original.src || "", baseURL);
-        if (url.protocol !== "https:" || !original.src) { $(element).remove(); return; }
+        const source = original["data-src"] || original.src || "";
+        if (/^data:image\/(png|jpeg|gif|webp);base64,[a-zA-Z0-9+/=]+$/.test(source)) {
+          $(element).attr("src", source).attr("alt", original.alt || "");
+          return;
+        }
+        const url = new URL(source, baseURL);
+        if (url.protocol === "http:") url.protocol = "https:";
+        if (url.protocol !== "https:" || !source) { $(element).remove(); return; }
         images.push(url.href);
         $(element).attr("src", url.href).attr("alt", original.alt || "");
       } catch { $(element).remove(); }

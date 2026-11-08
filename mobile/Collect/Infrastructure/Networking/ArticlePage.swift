@@ -1,6 +1,6 @@
 import Foundation
 
 struct ArticlePage: Decodable, Sendable {
-    var articles: [ArticleDTO]
-    var next: String?
+  var articles: [ArticleDTO]
+  var next: String?
 }

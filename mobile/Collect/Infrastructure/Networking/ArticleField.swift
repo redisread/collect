@@ -1,5 +1,5 @@
 import Foundation
 
 enum ArticleField: String, Codable, Sendable, CaseIterable {
-    case isRead, isStarred, isReadLater, readingProgress
+  case isRead, isStarred, isReadLater, readingProgress
 }
