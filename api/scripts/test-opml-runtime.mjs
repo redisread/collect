@@ -27,6 +27,7 @@ try {
     await db.batch(sql.split('--> statement-breakpoint').map(s=>s.trim()).filter(Boolean).map(s=>db.prepare(s)));
   }
   await db.prepare("INSERT INTO user(id,name,email,created_at,updated_at) VALUES ('runtime','Runtime','runtime@test.invalid',0,0)").run();
+  await db.prepare("CREATE TABLE runtime_deliveries(item_id TEXT NOT NULL)").run();
   async function request(path) {
     const response = await mf.dispatchFetch('http://runtime.test'+path);
     assert.equal(response.status,200); return response.json();
@@ -44,7 +45,15 @@ try {
     const {id,deferred}=await request('/start?count='+count);assert.equal(deferred,false);
     const job=await completed(id,count);
     await request('/duplicate?item='+job.items[0].id);
-    // The same completed item is delivered again through the real local queue binding.
+    const deadline = Date.now() + 10_000;
+    let deliveries = 0;
+    do {
+      deliveries = (await db.prepare("SELECT COUNT(*) AS n FROM runtime_deliveries WHERE item_id=?").bind(job.items[0].id).first()).n;
+      if (deliveries >= 2) break;
+      await new Promise(r=>setTimeout(r,100));
+    } while (Date.now() < deadline);
+    assert.ok(deliveries >= 2, "duplicate message must finish consumption before checking totals");
+    assert.equal((await request('/job?id='+id)).imported,count);
     console.log(`PASS workerd D1/Queues import ${count}`);
   }
   const {id,deferred}=await request('/start?count=201&fail=1');assert.equal(deferred,true);

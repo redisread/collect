@@ -33,9 +33,12 @@ export default {
     return Response.json(await getImportJob(env,"runtime",url.searchParams.get("id")!));
   },
   async queue(batch,env) {
-    for (const message of batch.messages) await consumeImportMessage(env,message,{fetch:async url=>({
+    for (const message of batch.messages) {
+      await consumeImportMessage(env,message,{fetch:async url=>({
       title:"Runtime",description:"",siteUrl:"https://example.com",faviconUrl:null,
       articles:[{title:"Article",url:url+"/article",content:"<p>Test</p>",summary:"Test",author:"",imageUrl:null,publishedAt:null,guid:url}]
-    })});
+      })});
+      await env.DB.prepare("INSERT INTO runtime_deliveries(item_id) VALUES (?)").bind(message.body.itemId).run();
+    }
   }
 } satisfies ExportedHandler<CloudflareEnv,OpmlImportMessage>;
