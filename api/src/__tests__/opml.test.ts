@@ -119,3 +119,32 @@ it("imports fifty initial articles without exceeding D1 bound parameters", async
   await processImportItem(env, item.id, { fetch: vi.fn().mockResolvedValue({ ...parsed, articles: Array.from({ length: 50 }, (_, i) => ({ ...parsed.articles[0], url: `https://example.com/article/${i}` })) }) });
   expect(database.sqlite.prepare("SELECT count(*) AS n FROM articles").get().n).toBe(50);
 });
+
+it.each([99, 100, 147, 200])("dispatches %i subscriptions", async count => {
+ const id = await createImportPreview(env, "owner", file(Array.from({length: count}, (_, i) => source(`https://example.com/${i}`)).join("")), "test.opml");
+ await confirmImport(env, "owner", id);
+ await dispatchImportItems(env, id);
+ expect(vi.mocked(env.FEED_SYNC_QUEUE.sendBatch).mock.calls.flatMap(call => Array.from(call[0]))).toHaveLength(count);
+});
+
+it("recovers a large queued import on a later scheduler run without re-sending the accepted batch", async () => {
+  const id = await createImportPreview(env, "owner", file(Array.from({ length: 201 }, (_, i) => source(`https://example.com/${i}`)).join("")), "large.opml");
+  await confirmImport(env, "owner", id);
+  vi.mocked(env.FEED_SYNC_QUEUE.sendBatch).mockImplementationOnce(async () => ({ metadata: { metrics: { backlogCount: 100, backlogBytes: 0 } } })).mockRejectedValueOnce(new Error("queue unavailable"));
+  await expect(dispatchImportItems(env, id)).rejects.toThrow("queue unavailable");
+  expect(vi.mocked(env.FEED_SYNC_QUEUE.sendBatch).mock.calls.map(call => Array.from(call[0]).length)).toEqual([100, 100]);
+  // Simulate the first accepted batch completing before the next cron tick.
+  const accepted = vi.mocked(env.FEED_SYNC_QUEUE.sendBatch).mock.calls[0][0];
+  for (const message of accepted) {
+    const { itemId } = message.body as { itemId: string };
+    database.sqlite.prepare("UPDATE opml_import_items SET status='imported' WHERE id=?").run(itemId);
+  }
+  database.sqlite.exec("UPDATE opml_import_items SET next_dispatch_at=0");
+  vi.mocked(env.FEED_SYNC_QUEUE.sendBatch).mockClear();
+  await dispatchImportItems(env);
+  const recovered = vi.mocked(env.FEED_SYNC_QUEUE.sendBatch).mock.calls.flatMap(call => Array.from(call[0]));
+  expect(recovered).toHaveLength(101);
+  expect(new Set(recovered.map(message => (message.body as { itemId: string }).itemId)).size).toBe(101);
+  await dispatchImportItems(env);
+  expect(vi.mocked(env.FEED_SYNC_QUEUE.sendBatch)).toHaveBeenCalledTimes(2);
+});
