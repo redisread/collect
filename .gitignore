@@ -57,19 +57,13 @@ api/dist/
 frontend/.astro/
 frontend/dist/
 frontend/.cloudflare/
-mobile/.dart_tool/
 mobile/build/
-mobile/.flutter-plugins
-mobile/.flutter-plugins-dependencies
 
 # pnpm
 .pnpm-store/
 node_modules/
 
 # monorepo mobile 额外产物
-mobile/android/.gradle/
-mobile/ios/Pods/
-mobile/ios/.symlinks/
 
 # 环境变量
 *.env.local

@@ -1,35 +1,37 @@
-name: Build Mobile
-
+name: Check iPhone App
 on:
   pull_request:
     branches: [main]
-    paths:
-      - "mobile/**"
-      - ".github/workflows/mobile.yml"
+    paths: ['mobile/**', '.github/workflows/mobile.yml']
   push:
     branches: [main]
-    paths:
-      - "mobile/**"
-      - ".github/workflows/mobile.yml"
-
+    paths: ['mobile/**', '.github/workflows/mobile.yml']
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
-  build-android:
-    runs-on: ubuntu-latest
+  verify-ios:
+    runs-on: macos-26
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
+      - uses: actions/checkout@v6
+      - uses: maxim-lobanov/setup-xcode@v1
         with:
-          flutter-version: "3.x"
-          channel: "stable"
-      - name: Install dependencies
-        run: flutter pub get
-        working-directory: mobile
-      - name: Analyze
-        run: flutter analyze
-        working-directory: mobile
-      - name: Test
-        run: flutter test
-        working-directory: mobile
-      - name: Build APK
-        run: flutter build apk --dart-define=API_BASE_URL=${{ secrets.API_URL }}
-        working-directory: mobile
+          xcode-version: latest-stable
+      - name: Select iPhone simulator
+        run: |
+          xcodebuild -version
+          swift --version
+          DEVICE_ID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for v in d["devices"].values() for x in v if x["name"].startswith("iPhone")))')
+          echo "DEVICE_ID=$DEVICE_ID" >> "$GITHUB_ENV"
+      - name: Build and test native iPhone app and Widget
+        run: xcodebuild -project mobile/Collect.xcodeproj -scheme Collect -destination "platform=iOS Simulator,id=$DEVICE_ID" -resultBundlePath /tmp/CollectTests.xcresult CODE_SIGN_IDENTITY=- test
+      - name: Verify native-only source tree
+        run: |
+          test -z "$(find mobile -name '*.dart' -o -name 'pubspec.yaml')"
+          ! grep -R -E '^import UIKit|XCRemoteSwiftPackageReference' mobile/Collect mobile/CollectWidgets mobile/Shared mobile/Collect.xcodeproj
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: iOS-test-results
+          path: /tmp/CollectTests.xcresult

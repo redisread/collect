@@ -8,7 +8,7 @@ Collect 采用 pnpm monorepo 架构，包含以下子包：
 
 - `api/` - Hono + Cloudflare Workers 后端
 - `frontend/` - Astro + React 前端
-- `mobile/` - Flutter 移动端
+- `mobile/` - 原生 SwiftUI iPhone 应用
 
 ## 快速开始
 
@@ -75,22 +75,13 @@ pnpm --filter frontend test:coverage
 
 ### 移动端测试
 
-**框架**: Flutter Test
+单元与集成测试采用 Swift Testing，界面测试采用 XCTest。
 
 ```bash
-# 运行移动端测试
-pnpm test:mobile
-
-# 或进入 mobile 目录
-cd mobile && flutter test
+xcodebuild -project mobile/Collect.xcodeproj -scheme Collect -destination 'platform=iOS Simulator,id=<ID>' CODE_SIGN_IDENTITY=- test
 ```
 
-**测试文件位置**: `mobile/test/**/*.dart`
-
-**主要测试模块**:
-- `models/feed_test.dart` - Feed 模型测试
-- `models/article_test.dart` - Article 模型测试
-- `models/folder_test.dart` - Folder 模型测试
+测试位于 `mobile/CollectTests/` 和 `mobile/CollectUITests/`。
 
 ## 添加新测试
 
@@ -130,18 +121,14 @@ describe("Utility Function", () => {
 
 ### 移动端测试示例
 
-```dart
-import 'package:flutter_test/flutter_test.dart';
-import 'package:collect/models/feed.dart';
+```swift
+import Testing
+@testable import Collect
 
-void main() {
-  group('Feed Model', () {
-    test('should create from JSON', () {
-      final json = {'id': '1', 'title': 'Test'};
-      final feed = Feed.fromJson(json);
-      expect(feed.id, '1');
-    });
-  });
+struct ReaderTests {
+    @Test func titleEscaping() {
+        #expect(ReaderDocument.escape("<title>") == "&lt;title&gt;")
+    }
 }
 ```
 
