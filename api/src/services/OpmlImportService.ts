@@ -95,7 +95,9 @@ export async function dispatchImportItems(env: CloudflareEnv, jobId?: string) {
       jobId ? eq(opmlImportItems.jobId, jobId) : undefined)).orderBy(asc(opmlImportItems.nextDispatchAt)).limit(200);
   for (let offset = 0; offset < due.length; offset += 100) {
     const batch = due.slice(offset, offset + 100);
-    await db.update(opmlImportItems).set({ nextDispatchAt: now + 300_000 }).where(inArray(opmlImportItems.id, batch.map(item => item.id)));
+    // One JSON parameter for IDs leaves room for the timestamp under D1's 100-parameter limit.
+    await db.update(opmlImportItems).set({ nextDispatchAt: now + 300_000 })
+      .where(sql`${opmlImportItems.id} IN (SELECT value FROM json_each(${JSON.stringify(batch.map(item => item.id))}))`);
     await env.FEED_SYNC_QUEUE.sendBatch(batch.map(item => ({ body: { source: "opml-import", itemId: item.id }, contentType: "json" as const })));
   }
   await finishImportJobs(env);
