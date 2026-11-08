@@ -146,6 +146,7 @@ export const useFeedStore = create<FeedStore>((set, get) => ({
 	},
 
 	deleteFolder: async (folderId) => {
+		set({ moveStatus: null });
 		const response = await fetch(`${API_BASE}/api/folders/${folderId}`, { method: "DELETE", credentials: "include" });
 		if (!response.ok) { set({ moveStatus: "删除文件夹失败，请重试" }); return; }
 		set((state) => ({
