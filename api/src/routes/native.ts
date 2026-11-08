@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { and, eq, gt, asc } from "drizzle-orm";
 import { getDb } from "../db";
-import { articles, session, user } from "../db/schema";
+import { articles, session } from "../db/schema";
 import { authMiddleware } from "../middleware/auth";
 import type { CloudflareEnv } from "../types";
 
@@ -11,11 +11,6 @@ const app = new Hono<{ Bindings: CloudflareEnv; Variables: { userId: string } }>
 app.use("*", authMiddleware);
 app.use("*", async (c, next) => { c.header("Cache-Control", "no-store"); await next(); });
 
-app.get("/account", async c => {
-  const account = await getDb(c.env.DB).select({ id: user.id, name: user.name, email: user.email })
-    .from(user).where(eq(user.id, c.get("userId"))).get();
-  return c.json({ success: true, data: account });
-});
 app.delete("/session", async c => {
   const token = c.req.header("Authorization")?.replace(/^Bearer /, "");
   if (!token) return c.json({ success: false, error: "缺少会话" }, 400);

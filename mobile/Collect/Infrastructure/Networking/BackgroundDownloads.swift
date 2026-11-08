@@ -6,7 +6,6 @@ final class BackgroundDownloads: NSObject, URLSessionDownloadDelegate {
   static let identifier = "com.example.collect.offline-images"
   static let shared = BackgroundDownloads()
   var revision = 0
-  var failures = 0
   private var scheduled = Set<String>()
   private let events = BackgroundEventGate()
   @ObservationIgnored private lazy var session: URLSession = {
@@ -78,10 +77,8 @@ final class BackgroundDownloads: NSObject, URLSessionDownloadDelegate {
     _ session: URLSession, task: URLSessionTask, didCompleteWithError error: (any Error)?
   ) {
     let key = task.taskDescription
-    let failed = error != nil
     Task { @MainActor [weak self] in
       if let key { self?.scheduled.remove(key) }
-      if failed { self?.failures += 1 }
       self?.revision += 1
     }
   }

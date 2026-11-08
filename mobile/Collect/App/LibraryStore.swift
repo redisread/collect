@@ -17,8 +17,6 @@ final class LibraryStore {
   var isSyncing = false
   var isCaching = false
   var cachePaused = UserDefaults.standard.bool(forKey: "offlinePaused")
-  var cacheCompleted = 0
-  var cacheTotal = 0
   private var cacheGeneration = 0
   var offlineRevision: Int { cacheGeneration }
   private var syncRequested = false
@@ -282,8 +280,6 @@ final class LibraryStore {
     let protected = articles.filter { $0.isStarred == true || $0.isReadLater == true }
     let unread = articles.filter { $0.isRead != true }.prefix(max(1, cacheLimit))
     let ids = Set(protected.map(\.id) + unread.map(\.id))
-    cacheTotal = ids.count
-    cacheCompleted = 0
     for article in articles where ids.contains(article.id) {
       if Task.isCancelled || cachePaused || session?.token != saved.token { return }
       await prepareArticle(article.id)
@@ -291,7 +287,6 @@ final class LibraryStore {
         for image in record.imageURLs {
           BackgroundDownloads.shared.enqueue(owner: saved.account.id, source: image)
         }
-        if CacheFiles.isComplete(record) { cacheCompleted += 1 }
       }
     }
     do {
