@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:collect/providers/article_provider.dart';
 import 'package:collect/providers/auth_provider.dart';
 import 'package:collect/providers/feed_provider.dart';
@@ -24,7 +25,23 @@ class FakeApi extends ApiService {
   };
 }
 
+class DelayedApi extends FakeApi {
+  final pending = Completer<List<dynamic>>();
+  @override
+  Future<List<dynamic>> getArticles({String? feedId, bool uncategorized = false, bool? starred, bool? readLater, int page = 1}) => pending.future;
+}
+
 void main() {
+  test('late list response cannot overwrite a newer read state', () async {
+    final api = DelayedApi();
+    final container = ProviderContainer(overrides: [apiServiceProvider.overrideWithValue(api)]);
+    addTearDown(container.dispose);
+    final notifier = container.read(articlesNotifierProvider.notifier);
+    await notifier.fetchArticle('a');
+    api.pending.complete([{'id': 'a', 'feedId': 'f', 'title': 'A', 'url': 'https://a.test', 'isRead': false}]);
+    await Future<void>.delayed(Duration.zero);
+    expect(container.read(articlesNotifierProvider).articles.single.isRead, isTrue);
+  });
   test('article actions preserve the selected group and refresh unread counts', () async {
     final api = FakeApi();
     var feedLoads = 0;

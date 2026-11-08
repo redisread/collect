@@ -47,6 +47,7 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
 
   /// 是否从本地缓存加载
   bool _isOfflineMode = false;
+  bool _isTogglingRead = false;
 
   /// 本地缓存的文章
   Article? _cachedArticle;
@@ -891,11 +892,16 @@ $content
 
   /// 切换已读状态
   Future<void> _toggleRead(String articleId, bool isRead) async {
-    final notifier = ref.read(articlesNotifierProvider.notifier);
-    await notifier.toggleRead(articleId);
-    if (mounted && _cachedArticle?.id == articleId) {
-      setState(() => _cachedArticle = _cachedArticle?.copyWith(isRead: isRead));
-    }
+    if (_isTogglingRead) return;
+    _isTogglingRead = true;
+    try {
+      await ref.read(articlesNotifierProvider.notifier).toggleRead(articleId);
+      if (mounted && _cachedArticle?.id == articleId) {
+        setState(() => _cachedArticle = _cachedArticle?.copyWith(isRead: isRead));
+      }
+    } catch (_) {
+      if (mounted) _showToast('更新已读状态失败，请重试');
+    } finally { _isTogglingRead = false; }
   }
 
   /// 在浏览器中打开

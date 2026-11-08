@@ -32,6 +32,9 @@ class ArticlesState {
 /// 文章列表状态管理器
 class ArticlesNotifier extends StateNotifier<ArticlesState> {
   final Ref ref;
+  int _readVersion = 0;
+  int _loadVersion = 0;
+  final Map<String, ({bool isRead, int version})> _readChanges = {};
 
   ArticlesNotifier(this.ref) : super(const ArticlesState(isLoading: true));
 
@@ -45,14 +48,22 @@ class ArticlesNotifier extends StateNotifier<ArticlesState> {
 
   /// 加载文章列表
   Future<void> loadArticles({String? feedId, bool uncategorized = false}) async {
+    final readVersion = _readVersion;
+    final loadVersion = ++_loadVersion;
     state = state.copyWith(isLoading: true, error: null);
     try {
       final api = ref.read(apiServiceProvider);
       final data = await api.getArticles(feedId: feedId, uncategorized: uncategorized);
       final articles =
           data.map((e) => Article.fromJson(e as Map<String, dynamic>)).toList();
-      state = state.copyWith(articles: articles, isLoading: false);
+      if (!mounted || loadVersion != _loadVersion) return;
+      state = state.copyWith(articles: articles.map((article) {
+        final change = _readChanges[article.id];
+        return change != null && change.version > readVersion
+            ? article.copyWith(isRead: change.isRead) : article;
+      }).toList(), isLoading: false);
     } catch (e) {
+      if (!mounted || loadVersion != _loadVersion) return;
       state = state.copyWith(error: e.toString(), isLoading: false);
     }
   }
@@ -156,6 +167,7 @@ class ArticlesNotifier extends StateNotifier<ArticlesState> {
     bool? isReadLater,
     int? readingProgress,
   }) {
+    if (isRead != null) _readChanges[articleId] = (isRead: isRead, version: ++_readVersion);
     final updatedArticles = state.articles.map((article) {
       if (article.id == articleId) {
         return article.copyWith(
