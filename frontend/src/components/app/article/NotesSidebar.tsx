@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useArticleStore } from "@/lib/store/articleStore";
 import type { Annotation } from "@/lib/types";
+import { Modal } from "../common/Modal";
 import { cn } from "@/lib/utils/cn";
 import { formatRelativeTime } from "@/lib/utils/date";
 
@@ -22,7 +23,6 @@ export function NotesSidebar({ articleId, isOpen, onClose, onNavigateToHighlight
 	const { annotations, loadAnnotations, deleteAnnotation, updateAnnotation } = useArticleStore();
 	const [editingNote, setEditingNote] = useState<string | null>(null);
 	const [editText, setEditText] = useState("");
-	const sidebarRef = useRef<HTMLDivElement>(null);
 
 	// 加载笔记
 	useEffect(() => {
@@ -30,20 +30,6 @@ export function NotesSidebar({ articleId, isOpen, onClose, onNavigateToHighlight
 			loadAnnotations(articleId);
 		}
 	}, [isOpen, articleId, loadAnnotations]);
-
-	// 点击外部关闭
-	useEffect(() => {
-		if (!isOpen) return;
-
-		const handleClickOutside = (e: MouseEvent) => {
-			if (sidebarRef.current && !sidebarRef.current.contains(e.target as Node)) {
-				onClose();
-			}
-		};
-
-		document.addEventListener("mousedown", handleClickOutside);
-		return () => document.removeEventListener("mousedown", handleClickOutside);
-	}, [isOpen, onClose]);
 
 	// 过滤当前文章的笔记
 	const articleAnnotations = annotations.filter((a) => a.articleId === articleId);
@@ -66,29 +52,9 @@ export function NotesSidebar({ articleId, isOpen, onClose, onNavigateToHighlight
 	if (!isOpen) return null;
 
 	return (
-		<div
-			ref={sidebarRef}
-			className={cn(
-				"fixed right-0 top-0 bottom-0 z-40 w-80",
-				"bg-[var(--bg-card)] border-l border-[var(--border)] shadow-xl",
-				"animate-in slide-in-from-right duration-200"
-			)}
-		>
-			{/* 头部 */}
-			<div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
-				<h2 className="text-sm font-semibold text-[var(--text-primary)]">文章笔记</h2>
-				<button
-					onClick={onClose}
-					className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
-				>
-					<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-						<path d="M6 18L18 6M6 6l12 12" />
-					</svg>
-				</button>
-			</div>
-
+		<Modal title="文章笔记" onClose={onClose} drawer>
 			{/* 内容区域 */}
-			<div className="h-[calc(100%-60px)] overflow-y-auto p-4 space-y-6">
+			<div className="p-4 space-y-6">
 				{articleAnnotations.length === 0 ? (
 					<div className="flex flex-col items-center justify-center py-12 text-center">
 						<div className="w-12 h-12 rounded-full bg-[var(--bg-card-hover)] flex items-center justify-center mb-3">
@@ -122,7 +88,7 @@ export function NotesSidebar({ articleId, isOpen, onClose, onNavigateToHighlight
 											className={cn(
 												"group p-3 rounded-lg cursor-pointer",
 												"border border-transparent hover:border-[var(--border)]",
-												"hover:bg-[var(--bg-card-hover)] transition-all duration-150",
+												"hover:bg-[var(--bg-card-hover)] transition-colors duration-150",
 												HIGHLIGHT_COLORS[highlight.color || "yellow"]
 											)}
 											onClick={() => onNavigateToHighlight(highlight.textRange.start)}
@@ -135,7 +101,7 @@ export function NotesSidebar({ articleId, isOpen, onClose, onNavigateToHighlight
 													{highlight.note}
 												</p>
 											)}
-											<div className="flex items-center justify-between mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+											<div className="flex items-center justify-between mt-2 opacity-100">
 												<span className="text-[10px] text-[var(--text-tertiary)]">
 													{formatRelativeTime(highlight.createdAt)}
 												</span>
@@ -171,7 +137,7 @@ export function NotesSidebar({ articleId, isOpen, onClose, onNavigateToHighlight
 											className={cn(
 												"group p-3 rounded-lg",
 												"bg-[var(--bg-main)] border border-[var(--border-light)]",
-												"hover:border-[var(--border)] transition-all duration-150"
+												"hover:border-[var(--border)] transition-colors duration-150"
 											)}
 										>
 											{editingNote === note.id ? (
@@ -215,7 +181,7 @@ export function NotesSidebar({ articleId, isOpen, onClose, onNavigateToHighlight
 													<p className="text-sm text-[var(--text-primary)] whitespace-pre-wrap">
 														{note.note}
 													</p>
-													<div className="flex items-center justify-between mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+													<div className="flex items-center justify-between mt-2 opacity-100">
 														<span className="text-[10px] text-[var(--text-tertiary)]">
 															{formatRelativeTime(note.createdAt)}
 														</span>
@@ -250,6 +216,6 @@ export function NotesSidebar({ articleId, isOpen, onClose, onNavigateToHighlight
 					</>
 				)}
 			</div>
-		</div>
+		</Modal>
 	);
 }

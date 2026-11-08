@@ -38,66 +38,74 @@ export default function RegisterForm() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[var(--bg-main)]">
-      <div className="w-full max-w-sm px-6">
+    <div className="min-h-dvh flex items-center justify-center bg-[var(--bg-main)]">
+      <div className="w-full max-w-sm px-6 py-8">
         <img src="/collect.svg" width="48" height="48" alt="" className="mx-auto mb-4" />
         <h1 className="text-2xl font-bold text-center mb-2 text-[var(--text-primary)]">Collect</h1>
         <p className="text-sm text-center text-[var(--text-tertiary)] mb-8">创建新账号</p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm text-[var(--text-secondary)] mb-1">用户名</label>
+            <label htmlFor="registerform-name" className="block text-sm text-[var(--text-secondary)] mb-1">用户名</label>
             <input
               type="text"
+              id="registerform-name"
+              aria-describedby={error ? "registerform-error" : undefined}
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
               autoComplete="name"
-              className="w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] text-sm outline-none focus:border-[var(--accent)] transition-colors"
+              className="min-h-11 w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] text-base outline-none focus:border-[var(--accent)] transition-colors"
             />
           </div>
           <div>
-            <label className="block text-sm text-[var(--text-secondary)] mb-1">邮箱</label>
+            <label htmlFor="registerform-email" className="block text-sm text-[var(--text-secondary)] mb-1">邮箱</label>
             <input
               type="email"
+              id="registerform-email"
+              aria-describedby={error ? "registerform-error" : undefined}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
               autoComplete="email"
-              className="w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] text-sm outline-none focus:border-[var(--accent)] transition-colors"
+              className="min-h-11 w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] text-base outline-none focus:border-[var(--accent)] transition-colors"
             />
           </div>
           <div>
-            <label className="block text-sm text-[var(--text-secondary)] mb-1">密码</label>
+            <label htmlFor="registerform-password" className="block text-sm text-[var(--text-secondary)] mb-1">密码</label>
             <input
               type="password"
+              id="registerform-password"
+              aria-describedby={error ? "registerform-error" : undefined}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
               autoComplete="new-password"
-              className="w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] text-sm outline-none focus:border-[var(--accent)] transition-colors"
+              className="min-h-11 w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] text-base outline-none focus:border-[var(--accent)] transition-colors"
             />
           </div>
           <div>
-            <label className="block text-sm text-[var(--text-secondary)] mb-1">确认密码</label>
+            <label htmlFor="registerform-confirmPassword" className="block text-sm text-[var(--text-secondary)] mb-1">确认密码</label>
             <input
               type="password"
+              id="registerform-confirmPassword"
+              aria-describedby={error ? "registerform-error" : undefined}
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
               autoComplete="new-password"
-              className="w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] text-sm outline-none focus:border-[var(--accent)] transition-colors"
+              className="min-h-11 w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-primary)] text-base outline-none focus:border-[var(--accent)] transition-colors"
             />
           </div>
 
           {error && (
-            <p className="text-sm text-red-500">{error}</p>
+            <p id="registerform-error" role="alert" className="text-sm text-red-500">{error}</p>
           )}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2 rounded-lg bg-[var(--accent)] text-white text-sm font-medium hover:bg-[var(--accent-hover)] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            className="min-h-11 w-full py-2 rounded-lg bg-[var(--accent)] text-white text-sm font-medium hover:bg-[var(--accent-hover)] transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {loading ? "注册中..." : "注册"}
           </button>

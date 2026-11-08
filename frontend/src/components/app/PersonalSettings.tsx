@@ -47,13 +47,18 @@ export function PersonalSettings() {
   }
 
   return <main className="h-dvh overflow-y-auto bg-[var(--bg-main)] text-[var(--text-primary)] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
-    <div className="mx-auto max-w-2xl px-5 py-8 sm:px-8 sm:py-14">
+    <div className="mx-auto max-w-2xl px-5 py-5 sm:px-8 sm:py-10">
       <a href="/" onClick={navigateWithinReader} className="inline-flex min-h-11 items-center gap-2 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)]">← 返回阅读</a>
-      <header className="mt-8 mb-10 flex items-center gap-4">
+      <header className="mt-4 mb-6 flex items-center gap-4">
         <img src="/collect.svg" width="40" height="40" alt="" />
         <h1 ref={heading} tabIndex={-1} className="text-2xl font-semibold tracking-tight outline-none">个人设置</h1>
       </header>
-      <form onSubmit={save} className="border-t border-[var(--border-light)] pt-7">
+      <nav aria-label="设置分区" className="mb-6 flex flex-wrap gap-2 text-sm">
+        <a href="#translation-preferences" className="flex min-h-11 items-center rounded-lg bg-[var(--accent-light)] px-3 text-[var(--accent)]">翻译偏好</a>
+        <a href="#ai-settings-heading" className="flex min-h-11 items-center rounded-lg px-3 hover:bg-[var(--bg-card-hover)]">AI 服务</a>
+        <a href="#opml-heading" className="flex min-h-11 items-center rounded-lg px-3 hover:bg-[var(--bg-card-hover)]">订阅导入</a>
+      </nav>
+      <form id="translation-preferences" onSubmit={save} className="scroll-mt-5 border-t border-[var(--border-light)] pt-7">
         <label htmlFor="translation-language" className="block text-base font-medium">翻译目标语言</label>
         <p id="language-description" className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">全文翻译和双语阅读共用此语言，随账号在网页和 PWA 中同步。</p>
         {loading ? <p role="status" className="mt-6 text-sm text-[var(--text-secondary)]">正在加载设置…</p> : savedLanguage && <select

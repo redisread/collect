@@ -1,3 +1,4 @@
+import { MoveFeedDialog } from "../sidebar/MoveFeedDialog";
 import { useState, useEffect } from "react";
 import { useFeedStore } from "@/lib/store/feedStore";
 import { useUiStore } from "@/lib/store/uiStore";
@@ -142,7 +143,7 @@ export function Sidebar() {
 
 			{/* 底部工具栏 */}
 			<PwaInstallButton />
-			<div className="shrink-0 px-3 py-3 border-t border-[var(--border-light)] flex items-center justify-between">
+			<div className="shrink-0 px-3 py-3 border-t border-[var(--border-light)] flex flex-wrap items-center justify-between gap-2">
 				<ThemeToggle />
 				<span className="text-[11px] text-[var(--text-tertiary)]">
 					{feeds.length} 个订阅源
@@ -151,6 +152,7 @@ export function Sidebar() {
 
 			{/* 用户信息 + 退出 */}
 			<UserMenu />
+			<MoveFeedDialog />
 
 			{/* 添加订阅源弹窗 */}
 			{showAddFeed && <AddFeedDialog onClose={() => setShowAddFeed(false)} />}

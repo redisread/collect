@@ -1,3 +1,4 @@
+import { useUiStore } from "@/lib/store/uiStore";
 import { useState } from "react";
 import { useFeedStore } from "@/lib/store/feedStore";
 import { useArticleStore } from "@/lib/store/articleStore";
@@ -12,8 +13,9 @@ interface FeedItemProps {
 }
 
 export function FeedItem({ feed, isSelected }: FeedItemProps) {
-	const { setSelectedSource, deleteFeed, folders, moveFeedToFolder, movingFeedId } = useFeedStore();
+	const { setSelectedSource, deleteFeed, movingFeedId } = useFeedStore();
 	const { fetchArticles } = useArticleStore();
+	const setFeedToMoveId = useUiStore(state => state.setFeedToMoveId);
 	const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
 	const handleClick = () => {
@@ -57,6 +59,7 @@ export function FeedItem({ feed, isSelected }: FeedItemProps) {
 					event.dataTransfer.setData(FEED_DRAG_TYPE, feed.id);
 					event.dataTransfer.effectAllowed = "move";
 				}}
+				title={feed.title}
 				onClick={handleClick}
 				onContextMenu={handleContextMenu}
 				className={cn(
@@ -102,13 +105,10 @@ export function FeedItem({ feed, isSelected }: FeedItemProps) {
 					</span>
 				)}
 			</button>
-			<select aria-label={`移动 ${feed.title} 到文件夹`} value={feed.folderId ?? ""}
-				disabled={!!movingFeedId} onChange={event => void moveFeedToFolder(feed.id, event.target.value || null)}
-				className="w-16 shrink-0 rounded-md bg-[var(--bg-sidebar)] px-1 py-2 text-xs text-[var(--text-secondary)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
-			>
-				<option value="">未分类</option>
-				{folders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
-			</select>
+			<button type="button" aria-label={`移动 ${feed.title} 到文件夹`} title="移动到文件夹"
+				data-move-feed={feed.id} onClick={() => { useFeedStore.setState({ moveStatus: null }); setFeedToMoveId(feed.id); }} className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]">
+				<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M3 7V5h6l2 2h10v12H3V7Zm5 6h8m-3-3 3 3-3 3" /></svg>
+			</button>
 			</div>
 
 			{contextMenu && (
