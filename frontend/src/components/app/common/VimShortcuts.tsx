@@ -1,7 +1,7 @@
+import { Modal } from "./Modal";
 import { useEffect, useRef, useCallback, useState } from "react";
 import { useArticleStore } from "@/lib/store/articleStore";
 import { useUiStore } from "@/lib/store/uiStore";
-import { cn } from "@/lib/utils/cn";
 
 // Vim 风格快捷键映射
 const VIM_KEYMAP: Record<string, string> = {
@@ -277,32 +277,9 @@ export function VimShortcuts({ contentRef }: VimShortcutsProps) {
 		<>
 			{/* 快捷键帮助浮层 */}
 			{showHelp && (
-				<div
-					className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
-					onClick={() => setShowHelp(false)}
-				>
-					<div
-						className={cn(
-							"w-full max-w-md p-6 rounded-xl shadow-2xl",
-							"bg-[var(--bg-card)] border border-[var(--border)]"
-						)}
-						onClick={(e) => e.stopPropagation()}
-					>
-						<div className="flex items-center justify-between mb-4">
-							<h2 className="text-lg font-semibold text-[var(--text-primary)]">
-								键盘快捷键
-							</h2>
-							<button
-								onClick={() => setShowHelp(false)}
-								className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
-							>
-								<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-									<path d="M6 18L18 6M6 6l12 12" />
-								</svg>
-							</button>
-						</div>
-
-						<div className="grid grid-cols-2 gap-2">
+				<Modal title="键盘快捷键" onClose={() => setShowHelp(false)}>
+					<div className="p-4">
+						<div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
 							{HELP_CONTENT.map(({ key, action }) => (
 								<div
 									key={key}
@@ -321,7 +298,7 @@ export function VimShortcuts({ contentRef }: VimShortcutsProps) {
 							按 <kbd className="px-1.5 py-0.5 rounded bg-[var(--bg-card-hover)] font-mono">Esc</kbd> 关闭
 						</p>
 					</div>
-				</div>
+				</Modal>
 			)}
 		</>
 	);

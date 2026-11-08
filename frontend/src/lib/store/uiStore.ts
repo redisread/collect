@@ -11,6 +11,8 @@ interface UiStore {
 	activeColumn: ActiveColumn;
 	isSidebarCollapsed: boolean;
 	searchQuery: string;
+	feedToMoveId: string | null;
+	setFeedToMoveId: (id: string | null) => void;
 
 	setTheme: (theme: ThemeMode) => void;
 	setSidebarWidth: (width: number) => void;
@@ -29,6 +31,8 @@ export const useUiStore = create<UiStore>()(
 			activeColumn: "list" as ActiveColumn,
 			isSidebarCollapsed: false,
 			searchQuery: "",
+			feedToMoveId: null,
+			setFeedToMoveId: (feedToMoveId) => set({ feedToMoveId }),
 
 			setTheme: (theme) => set({ theme }),
 			setSidebarWidth: (sidebarWidth) => set({ sidebarWidth }),

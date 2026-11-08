@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { motion, useMotionValue, useTransform, type PanInfo } from "framer-motion";
+import { motion, useMotionValue, useTransform, useReducedMotion, type PanInfo } from "framer-motion";
 import { useArticleStore } from "@/lib/store/articleStore";
 import { useFeedStore } from "@/lib/store/feedStore";
 import type { ArticleListItem } from "@/lib/types";
@@ -27,6 +27,7 @@ export function ArticleCard({ article, index }: ArticleCardProps) {
 
 	// 用于滑动动画的值
 	const x = useMotionValue(0);
+	const reduceMotion = useReducedMotion();
 
 	// 根据滑动距离计算背景透明度
 	const leftSwipeProgress = useTransform(x, [-MAX_SWIPE, -SWIPE_THRESHOLD, 0], [1, 0.5, 0]);
@@ -35,6 +36,7 @@ export function ArticleCard({ article, index }: ArticleCardProps) {
 	// 处理滑动结束
 	const handleDragEnd = (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
 		setIsDragging(false);
+		if (reduceMotion) x.set(0);
 		const swipeDistance = info.offset.x;
 
 		if (swipeDistance <= -SWIPE_THRESHOLD) {
@@ -130,7 +132,8 @@ export function ArticleCard({ article, index }: ArticleCardProps) {
 				style={{ x }}
 				drag="x"
 				dragConstraints={{ left: 0, right: 0 }}
-				dragElastic={0.1}
+				dragElastic={reduceMotion ? 0 : 0.1}
+				dragMomentum={false}
 				onDragStart={() => setIsDragging(true)}
 				onDragEnd={handleDragEnd}
 				dragDirectionLock

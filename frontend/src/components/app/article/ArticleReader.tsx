@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { hasMatchingLeadImage } from "@/lib/utils/article-image";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useArticleStore } from "@/lib/store/articleStore";
 import { useFeedStore } from "@/lib/store/feedStore";
 import type { TextRange } from "@/lib/types";
@@ -284,6 +285,9 @@ export function ArticleReader() {
 	const translation = selectedArticle ? translations[translationKey] : null;
 	const hasTranslation = !!translation && (translation.completed === undefined || translation.completed > 0);
 	const hasContent = !!selectedArticle?.content;
+	const duplicateCover = useMemo(() => hasMatchingLeadImage(
+		selectedArticle?.content ?? "", selectedArticle?.imageUrl,
+	), [selectedArticle?.content, selectedArticle?.imageUrl]);
 
 	useEffect(() => {
 		const changedArticle = viewArticleId.current !== selectedArticle?.id;
@@ -368,7 +372,7 @@ export function ArticleReader() {
 							)}
 
 							{/* 封面图 */}
-							{selectedArticle.imageUrl && (
+							{selectedArticle.imageUrl && !duplicateCover && (
 								<img
 									src={selectedArticle.imageUrl}
 									alt={selectedArticle.title}

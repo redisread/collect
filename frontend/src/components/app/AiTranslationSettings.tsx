@@ -84,7 +84,7 @@ export function AiTranslationSettings() {
       <button disabled={busy} onClick={() => edit()} className={buttonClass + " mt-4 border border-[var(--border)]"}>添加 AI 配置</button>
       <p className="mt-3 text-xs leading-5 text-[var(--text-tertiary)]">测试连接会发送一小段示例文字，消耗少量 API 额度。</p>
     </>}
-    {showForm && <form onSubmit={event => { event.preventDefault(); void save(false); }} className="mt-6 space-y-4 rounded-xl border border-[var(--border)] p-4 sm:p-5">
+    {showForm && <form onSubmit={event => { event.preventDefault(); void save(!editing); }} className="mt-6 space-y-4 rounded-xl border border-[var(--border)] p-4 sm:p-5">
       <h3 className="font-medium">{editing ? "编辑 AI 配置" : "新增 AI 配置"}</h3>
       <fieldset disabled={busy} className="space-y-4">
         <label className="block text-sm">服务类型<select className={fieldClass} value={form.kind} onChange={event => {
@@ -100,10 +100,10 @@ export function AiTranslationSettings() {
         <label className="block text-sm">API key<input required={!editing || form.baseUrl !== editing.baseUrl} type="password" autoComplete="new-password" maxLength={4096} className={fieldClass} value={form.apiKey} onChange={event => setForm({ ...form, apiKey: event.target.value })} placeholder={editing ? "留空保留已有密钥" : "输入服务商提供的密钥"} /></label>
         <p className="text-xs leading-5 text-[var(--text-secondary)]">密钥加密保存，网页与 PWA 共用。文章会发送至所选服务商，使用你的 API 额度。</p>
         <div className="flex flex-wrap gap-2">
-          <button type="submit" className={buttonClass + " bg-[var(--brand-yellow)] text-stone-900"}>{busy ? "正在保存…" : "保存配置"}</button>
+          <button type="submit" className={buttonClass + " bg-[var(--brand-yellow)] text-stone-900"}>{busy ? "正在保存…" : editing ? "保存配置" : "保存并启用"}</button>
           {!editing && <button type="button" className={buttonClass} onClick={event => {
-            if (event.currentTarget.form?.reportValidity()) void save(true);
-          }}>保存并启用</button>}
+            if (event.currentTarget.form?.reportValidity()) void save(false);
+          }}>仅保存</button>}
           <button type="button" className={buttonClass} onClick={() => { setShowForm(false); setForm(emptyForm); setEditing(null); }}>取消</button>
         </div>
       </fieldset>
