@@ -1,3 +1,4 @@
+import { ContextMenu } from "../common/ContextMenu";
 import { useRef, useState } from "react";
 import { motion, useMotionValue, useTransform, useReducedMotion, type PanInfo } from "framer-motion";
 import { useArticleStore } from "@/lib/store/articleStore";
@@ -16,10 +17,11 @@ const SWIPE_THRESHOLD = 100;
 // 最大滑动距离
 const MAX_SWIPE = 150;
 
-export function ArticleCard({ article, index }: ArticleCardProps) {
-	const { selectedArticleId, selectArticle, markRead, toggleStarred } = useArticleStore();
+export function ArticleCard({ article }: ArticleCardProps) {
+	const { selectedArticleId, selectArticle, markRead, toggleStarred, toggleReadLater, pendingArticleIds } = useArticleStore();
 	const { feeds } = useFeedStore();
 	const isSelected = selectedArticleId === article.id;
+	const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
 	const [isDragging, setIsDragging] = useState(false);
 	const cardRef = useRef<HTMLDivElement>(null);
 
@@ -59,7 +61,7 @@ export function ArticleCard({ article, index }: ArticleCardProps) {
 		<div
 			ref={cardRef}
 			className="relative overflow-hidden"
-			style={{ animationDelay: `${index * 30}ms` }}
+			onContextMenu={event => { event.preventDefault(); event.currentTarget.querySelector("button")?.focus(); setMenu({ x: event.clientX, y: event.clientY }); }}
 		>
 			{/* 左滑背景 - 已读操作 */}
 			<motion.div
@@ -122,8 +124,15 @@ export function ArticleCard({ article, index }: ArticleCardProps) {
 			{/* 卡片内容 */}
 			<motion.button
 				onClick={handleClick}
+        onKeyDown={event => {
+          if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+            event.preventDefault();
+            const rect = event.currentTarget.getBoundingClientRect();
+            setMenu({ x: rect.left + 16, y: rect.top + 16 });
+          }
+        }}
 				className={cn(
-					"w-full text-left px-4 py-3 border-b border-[var(--border-light)]",
+					"w-full text-left ps-4 pe-12 py-3 border-b border-[var(--border-light)]",
 					"transition-colors duration-[var(--transition-base)]",
 					"hover:bg-[var(--bg-card-hover)] relative z-10 bg-[var(--bg-main)]",
 					isSelected && "bg-[var(--bg-card-selected)]",
@@ -204,6 +213,15 @@ export function ArticleCard({ article, index }: ArticleCardProps) {
 					)}
 				</div>
 			</motion.button>
+      <button aria-label={`更多操作 ${article.title}`} aria-haspopup="menu"
+        className="absolute end-1 top-1 z-20 flex min-h-11 min-w-11 items-center justify-center rounded-lg text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]"
+        onClick={event => { const rect = event.currentTarget.getBoundingClientRect(); setMenu({ x: rect.right - 200, y: rect.bottom }); }}>•••</button>
+      {menu && <ContextMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)} items={[
+        { label: article.isRead ? "标记未读" : "标记已读", disabled: pendingArticleIds.includes(article.id), onClick: () => void markRead(article.id, !article.isRead) },
+        { label: article.isStarred ? "取消收藏" : "收藏", disabled: pendingArticleIds.includes(article.id), onClick: () => void toggleStarred(article.id) },
+        { label: article.isReadLater ? "移出稍后阅读" : "稍后阅读", disabled: pendingArticleIds.includes(article.id), onClick: () => void toggleReadLater(article.id) },
+        { label: "打开原文 ↗", onClick: () => { window.open(article.url, "_blank", "noopener,noreferrer"); } },
+      ]} />}
 		</div>
 	);
 }

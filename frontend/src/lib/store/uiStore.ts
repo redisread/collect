@@ -11,6 +11,8 @@ interface UiStore {
 	activeColumn: ActiveColumn;
 	isSidebarCollapsed: boolean;
 	searchQuery: string;
+	hideRead: boolean;
+	setHideRead: (value: boolean) => void;
 	feedToMoveId: string | null;
 	setFeedToMoveId: (id: string | null) => void;
 
@@ -31,6 +33,8 @@ export const useUiStore = create<UiStore>()(
 			activeColumn: "list" as ActiveColumn,
 			isSidebarCollapsed: false,
 			searchQuery: "",
+			hideRead: false,
+			setHideRead: (hideRead) => set({ hideRead }),
 			feedToMoveId: null,
 			setFeedToMoveId: (feedToMoveId) => set({ feedToMoveId }),
 
@@ -45,6 +49,7 @@ export const useUiStore = create<UiStore>()(
 			name: "folio-ui",
 			partialize: (state) => ({
 				theme: state.theme,
+				hideRead: state.hideRead,
 				sidebarWidth: state.sidebarWidth,
 				articleListWidth: state.articleListWidth,
 				isSidebarCollapsed: state.isSidebarCollapsed,

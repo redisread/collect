@@ -1,19 +1,15 @@
 import { MoveFeedDialog } from "../sidebar/MoveFeedDialog";
 import { useState, useEffect } from "react";
 import { useFeedStore } from "@/lib/store/feedStore";
-import { useUiStore } from "@/lib/store/uiStore";
 import { SearchBox } from "../sidebar/SearchBox";
 import { SmartGroups } from "../sidebar/SmartGroups";
 import { FolderTree } from "../sidebar/FolderTree";
 import { AddFeedDialog } from "../sidebar/AddFeedDialog";
-import { ThemeToggle } from "../common/ThemeToggle";
 import { UserMenu } from "../sidebar/UserMenu";
-import { PwaInstallButton } from "../PwaControls";
 import { cn } from "@/lib/utils/cn";
 
 export function Sidebar() {
-	const { folders, feeds, addFolder, isLoading, refreshError, refresh, fetchFolders, fetchFeeds } = useFeedStore();
-	const { isSidebarCollapsed } = useUiStore();
+	const { addFolder, isLoading, refreshError, refresh, fetchFolders, fetchFeeds } = useFeedStore();
 	const [showAddFeed, setShowAddFeed] = useState(false);
 	const [showAddFolder, setShowAddFolder] = useState(false);
 	const [newFolderName, setNewFolderName] = useState("");
@@ -128,26 +124,6 @@ export function Sidebar() {
 			{/* 文件夹树（可滚动） */}
 			<div className="flex-1 overflow-y-auto pb-2">
 				<FolderTree />
-			</div>
-
-			{/* 翻译历史入口 */}
-			<a
-				href="/translations"
-				className="mx-3 my-1 flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors"
-			>
-				<svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-					<path strokeLinecap="round" strokeLinejoin="round" d="M10.5 21l6-6m-6 6h12" />
-				</svg>
-				翻译历史
-			</a>
-
-			{/* 底部工具栏 */}
-			<PwaInstallButton />
-			<div className="shrink-0 px-3 py-3 border-t border-[var(--border-light)] flex flex-wrap items-center justify-between gap-2">
-				<ThemeToggle />
-				<span className="text-[11px] text-[var(--text-tertiary)]">
-					{feeds.length} 个订阅源
-				</span>
 			</div>
 
 			{/* 用户信息 + 退出 */}

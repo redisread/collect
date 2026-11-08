@@ -1,3 +1,4 @@
+import { motion, useReducedMotion } from "framer-motion";
 import { useArticleStore, SUPPORTED_LANGUAGES } from "@/lib/store/articleStore";
 import type { Article } from "@/lib/types";
 import { useEffect, useId, useRef } from "react";
@@ -10,12 +11,13 @@ interface ArticleToolbarProps {
 }
 
 export function ArticleToolbar({ article, onOpenNotes }: ArticleToolbarProps) {
+  const reduceMotion = useReducedMotion();
   const {
     toggleStarred, toggleReadLater, translateArticle, translateFullArticle, isTranslating,
     extractArticle, isExtracting, extractionError, translationError,
     translationFallback, translateInBrowser, translationMode,
     targetLanguage, isLoadingPreference, preferenceError,
-    aiProgress, pauseTranslation, continueTranslation,
+    aiProgress, pauseTranslation, continueTranslation, isPausingTranslation,
   } = useArticleStore();
   const { profiles, activeProfileId } = useAiSettingsStore();
   const activeProfile = profiles.find(profile => profile.id === activeProfileId);
@@ -45,15 +47,15 @@ export function ArticleToolbar({ article, onOpenNotes }: ArticleToolbarProps) {
         <button onClick={() => void (canContinue ? continueTranslation() : translateFullArticle())} disabled={busy}
           title={`使用${providerName}翻译为${languageLabel}，可在个人设置中修改`} aria-description={`使用${providerName}，目标语言为${languageLabel}`}
           className={buttonClass + " bg-[var(--accent-light)] text-[var(--accent)]"}>
-          {isLoadingPreference ? "同步设置…" : isExtracting ? "提取全文…" : isTranslating ? "翻译中…" : canContinue ? "继续翻译" : "翻译全文"}
+          {isLoadingPreference ? "同步设置…" : isExtracting ? "提取全文…" : isTranslating ? "翻译中…" : canContinue ? (aiProgress?.failed && aiProgress.pending === 0 ? "重试失败段落" : "继续翻译") : "翻译全文"}
         </button>
-        {translationMode === "ai" && isTranslating && <button className={buttonClass} onClick={pauseTranslation}>暂停</button>}
+        {translationMode === "ai" && isTranslating && <button disabled={isPausingTranslation} className={buttonClass} onClick={pauseTranslation}>{isPausingTranslation ? "保存中…" : "暂停"}</button>}
         <button aria-label={article.isStarred ? "取消收藏" : "收藏"} aria-pressed={article.isStarred}
           onClick={() => void toggleStarred(article.id)} className={buttonClass + " ml-auto"}>
-          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24"
+          <motion.svg animate={{ scale: article.isStarred && !reduceMotion ? [1, 1.08, 1] : 1 }} transition={{ duration: 0.15 }} aria-hidden="true" width="18" height="18" viewBox="0 0 24 24"
             fill={article.isStarred ? "var(--brand-yellow)" : "none"} stroke="currentColor" strokeWidth="1.6">
             <path strokeLinejoin="round" d="m12 3 2.8 5.7 6.3.9-4.6 4.4 1.1 6.3-5.6-3-5.6 3 1.1-6.3L3 9.6l6.2-.9Z" />
-          </svg>
+          </motion.svg>
         </button>
         <button ref={trigger} popoverTarget={menuId} aria-label="更多文章操作"
           aria-haspopup="menu" className={buttonClass}>•••</button>
@@ -89,11 +91,15 @@ export function ArticleToolbar({ article, onOpenNotes }: ArticleToolbarProps) {
           className={buttonClass + " flex items-center"} onClick={closeMenu}>打开原文 ↗</a>
       </div>
       {busy && <p role="status" className="mt-2 text-xs text-[var(--text-secondary)]">
-        {isLoadingPreference ? "正在同步翻译语言…" : isExtracting ? "正在获取完整文章…" : translationMode === "ai" ? "正在使用 AI 翻译…" : translationMode === "browser" ? "正在通过浏览器连接 Google 翻译…" : "正在翻译，请稍候…"}
+        {isLoadingPreference ? "正在同步翻译语言…" : isExtracting ? "正在获取完整文章…" : isPausingTranslation ? "正在保存已开始的段落" : translationMode === "ai" ? "正在并发翻译…" : translationMode === "browser" ? "正在通过浏览器连接 Google 翻译…" : "正在翻译，请稍候…"}
       </p>}
-      {aiProgress && <p role="status" className="mt-2 text-xs text-[var(--text-secondary)]">
-        已完成 {aiProgress.completed} / {aiProgress.total} 段{aiProgress.complete ? "，译文已保存" : "，已完成段落已保存"}
-      </p>}
+      {aiProgress && <div>
+      <div role="progressbar" aria-label="翻译进度" aria-valuemin={0} aria-valuemax={aiProgress.total} aria-valuenow={aiProgress.completed} className="mt-2 h-1 overflow-hidden rounded-full bg-[var(--border-light)]">
+        <motion.div className="h-full bg-[var(--brand-yellow)]" initial={false} animate={{ width: `${aiProgress.total ? aiProgress.completed / aiProgress.total * 100 : 0}%` }} transition={{ duration: reduceMotion ? 0 : 0.15 }} />
+      </div>
+      <p role="status" className="mt-2 text-xs text-[var(--text-secondary)]">
+        已完成 {aiProgress.completed} / {aiProgress.total} 段{aiProgress.failed ? `，${aiProgress.failed} 段待重试` : ""}{aiProgress.complete ? "，译文已保存" : "，已完成段落已保存"}
+      </p></div>}
       {(preferenceError || translationError || extractionError) && <div role="alert" className="mt-2 text-sm text-[var(--text-secondary)]">
         <p>{preferenceError || translationError || extractionError}</p>
         {translationFallback && <button disabled={busy}

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { drizzle, type AsyncRemoteCallback } from "drizzle-orm/sqlite-proxy";
 import { Hono } from "hono";
 import { getDb } from "../db";
+import articlesRoute from "../routes/articles";
 import profilesRoute from "../routes/ai-profiles";
 import translateRoute from "../routes/ai-translate";
 import type { CloudflareEnv } from "../types";
@@ -15,7 +16,7 @@ vi.mock("../middleware/auth", () => ({ authMiddleware: async (c: { req: { header
   c.set("userId", c.req.header("test-user") ?? "owner"); await next();
 } }));
 
-const app = new Hono<{ Bindings: CloudflareEnv }>().route("/profiles", profilesRoute).route("/translate", translateRoute);
+const app = new Hono<{ Bindings: CloudflareEnv }>().route("/articles", articlesRoute).route("/profiles", profilesRoute).route("/translate", translateRoute);
 let sqlite: ReturnType<typeof DatabaseSync>;
 let providerCalls: number;
 const env = { AI_KEYS_ENCRYPTION_SECRET: btoa("x".repeat(32)), DB: {}, COLLECT_KV: { get: async () => null, put: async () => {} } } as unknown as CloudflareEnv;
@@ -23,7 +24,7 @@ const profileInput = { name: "Reading", kind: "deepseek", baseUrl: "https://api.
 
 async function request(path: string, method = "GET", body?: unknown, owner = "owner") {
   return app.request("https://collect.test" + path, { method, headers: { "Content-Type": "application/json", "test-user": owner },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }) }, env);
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }) }, env, { waitUntil: () => {}, passThroughOnException: () => {}, props: {} });
 }
 
 beforeEach(() => {
@@ -136,4 +137,78 @@ it("preserves progress for key edits and isolates new model revisions", async ()
   const newJob = await (await request("/translate/start", "POST", { ...body, revision: modelEdited.data.profiles[0].revision })).json() as { data: { id: string; completed: number } };
   expect(newJob.data.id).not.toBe(started.data.id);
   expect(newJob.data.completed).toBe(0);
+});
+
+
+it("batches three indexed segments, persists progress and rejects stale versions", async () => {
+  const profile = await createProfile();
+  const body = { articleId: "article", profileId: profile.id, revision: profile.revision, targetLang: "zh-CN", content: "<p>One</p><p>Two</p><p>Three</p><p>Four</p>" };
+  const start = await (await request("/translate/start", "POST", body)).json() as { data: { id: string; completed: number; progressVersion: string } };
+  const step = await (await request(`/translate/${start.data.id}/step`, "POST", start.data)).json() as { data: typeof start.data };
+  expect(step).toMatchObject({ data: { completed: 3, pending: 1, failed: 0, complete: false } });
+  expect(providerCalls).toBe(3);
+  await request(`/translate/${start.data.id}/step`, "POST", start.data);
+  expect(providerCalls).toBe(3);
+  expect(await (await request(`/translate/${start.data.id}/step`, "POST", step.data)).json()).toMatchObject({ data: { completed: 4, complete: true } });
+});
+
+it("combines hideRead with favorites and retains only the selected read article", async () => {
+  sqlite.exec("UPDATE articles SET is_read=1,is_starred=1 WHERE id='article'");
+  sqlite.exec("INSERT INTO articles(id,user_id,feed_id,title,url,is_starred) VALUES ('unread','owner','feed','Unread','https://example.com/unread',1)");
+  const filtered = await (await request("/articles?filter=starred&hideRead=true")).json() as { data: { articles: { id: string }[] } };
+  expect(filtered.data.articles.map(article => article.id)).toEqual(["unread"]);
+  const retained = await (await request("/articles?filter=starred&hideRead=true&includeId=article")).json() as { data: { total: number } };
+  expect(retained.data.total).toBe(2);
+  expect(await (await request("/articles?filter=starred&hideRead=true&includeId=article", "GET", undefined, "other")).json()).toMatchObject({ data: { total: 0 } });
+});
+
+it("persists partial batch failures and only retranslates missing segments on retry", async () => {
+  const profile = await createProfile();
+  const input = { articleId: "article", profileId: profile.id, revision: profile.revision, targetLang: "zh-CN", content: "<p>One</p><p>Fail</p><p>Three</p><p>Four</p>" };
+  let fail = true;
+  const passages: string[] = [];
+  vi.mocked(fetch).mockImplementation(async (url, init) => {
+    if (String(url).startsWith("https://cloudflare-dns.com/")) return Response.json({ Status: 0, Answer: [{ type: 1, data: "8.8.8.8" }] });
+    const passage = JSON.parse(JSON.parse(String(init?.body)).messages[1].content).passage as string;
+    passages.push(passage);
+    if (passage.includes("Fail") && fail) return new Response("temporary", { status: 503 });
+    return Response.json({ choices: [{ finish_reason: "stop", message: { content: "译文" } }] });
+  });
+  type Progress = { id: string; completed: number; progressVersion: string; failed: number; pending: number };
+  const started = await (await request("/translate/start", "POST", input)).json() as { data: Progress };
+  const step = await (await request(`/translate/${started.data.id}/step`, "POST", started.data)).json() as { data: Progress };
+  expect(step).toMatchObject({ data: { completed: 2, failed: 1, pending: 1 } });
+  expect(passages.filter(text => text.includes("Fail"))).toHaveLength(3);
+  const rest = await (await request(`/translate/${started.data.id}/step`, "POST", step.data)).json() as { data: Progress };
+  expect(rest).toMatchObject({ data: { completed: 3, failed: 1, pending: 0 } });
+  expect(sqlite.prepare("SELECT count(*) AS total FROM translation_history").get().total).toBe(0);
+  fail = false;
+  expect(await (await request(`/translate/${started.data.id}/step`, "POST", { ...rest.data, retryFailed: true })).json()).toMatchObject({ data: { completed: 4, complete: true, failed: 0 } });
+  expect(passages.filter(text => text.includes("One"))).toHaveLength(1);
+  expect(passages.filter(text => text.includes("Three"))).toHaveLength(1);
+  expect(sqlite.prepare("SELECT count(*) AS total FROM translation_history").get().total).toBe(1);
+});
+
+it("saves finished runs and releases the lease when disconnect grace expires", async () => {
+  const profile = await createProfile();
+  const input = { articleId: "article", profileId: profile.id, revision: profile.revision, targetLang: "zh-CN", content: "<p>One</p><p>Two</p><p>Three</p>" };
+  const started = await (await request("/translate/start", "POST", input)).json() as { data: { id: string; completed: number; progressVersion: string } };
+  let calls = 0;
+  vi.mocked(fetch).mockImplementation(async (url, init) => {
+    if (String(url).startsWith("https://cloudflare-dns.com/")) return Response.json({ Status: 0, Answer: [{ type: 1, data: "8.8.8.8" }] });
+    if (++calls === 1) return Response.json({ choices: [{ finish_reason: "stop", message: { content: "译文" } }] });
+    return new Promise((_resolve, reject) => init?.signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true }));
+  });
+  vi.useFakeTimers();
+  try {
+    const controller = new AbortController();
+    const work = app.request(`https://collect.test/translate/${started.data.id}/step`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, signal: controller.signal, body: JSON.stringify(started.data),
+    }, env, { waitUntil: () => {}, passThroughOnException: () => {}, props: {} });
+    await vi.waitFor(() => expect(sqlite.prepare("SELECT completed FROM ai_translation_jobs").get().completed).toBe(1));
+    controller.abort();
+    await vi.advanceTimersByTimeAsync(25_000);
+    expect(await (await work).json()).toMatchObject({ data: { completed: 1, failed: 2 } });
+    expect(sqlite.prepare("SELECT lease_until FROM ai_translation_jobs").get().lease_until).toBe(0);
+  } finally { vi.useRealTimers(); }
 });

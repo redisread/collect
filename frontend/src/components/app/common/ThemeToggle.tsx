@@ -2,8 +2,8 @@ import { useEffect } from "react";
 import { useUiStore, type ThemeMode } from "@/lib/store";
 import { cn } from "@/lib/utils/cn";
 
-export function ThemeToggle() {
-	const { theme, setTheme } = useUiStore();
+export function ThemeController() {
+	const { theme } = useUiStore();
 
 	// 应用主题到 document
 	useEffect(() => {
@@ -33,6 +33,12 @@ export function ThemeToggle() {
 			return cleanup;
 		}
 	}, [theme]);
+
+  return null;
+}
+
+export function ThemeToggle() {
+  const { theme, setTheme } = useUiStore();
 
 	const options: { value: ThemeMode; label: string; path: string }[] = [
 		{ value: "light", label: "亮色", path: "M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0" },

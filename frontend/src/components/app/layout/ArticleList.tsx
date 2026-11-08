@@ -1,3 +1,5 @@
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { useUiStore } from "@/lib/store/uiStore";
 import { useEffect, useRef, useCallback } from "react";
 import { useArticleStore } from "@/lib/store/articleStore";
 import { useFeedStore } from "@/lib/store/feedStore";
@@ -6,14 +8,21 @@ import { ArticleCardSkeleton } from "../article/ArticleSkeleton";
 import { EmptyState } from "../common/EmptyState";
 
 export function ArticleList() {
+  const reduceMotion = useReducedMotion();
 	const { articles, isLoading, hasMore, fetchMoreArticles, total, sortOrder, setSortOrder } =
 		useArticleStore();
 	const { selectedSource } = useFeedStore();
+  const { hideRead, setHideRead } = useUiStore();
+  const { selectedArticleId, articleActionError } = useArticleStore();
+  const visibleArticles = articles.filter(article => !hideRead || !article.isRead || article.id === selectedArticleId);
 	const bottomRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
-		void useArticleStore.getState().fetchArticles(useFeedStore.getState().selectedSource);
-	}, [sortOrder]);
+		void useArticleStore.getState().fetchArticles(useFeedStore.getState().selectedSource, false);
+	}, [sortOrder, hideRead]);
+	useEffect(() => {
+		if (useUiStore.getState().hideRead) void useArticleStore.getState().fetchArticles(useFeedStore.getState().selectedSource, false);
+	}, [selectedArticleId]);
 
 	// 无限滚动加载
 	const handleObserver = useCallback(
@@ -52,11 +61,14 @@ export function ArticleList() {
 						<p className="text-[11px] text-[var(--text-tertiary)]">{total} 篇</p>
 					)}
 				</div>
-				{/* 排序切换 */}
+				<label className="ms-auto flex min-h-11 items-center gap-2 px-2 text-xs text-[var(--text-secondary)]">
+          <input type="checkbox" checked={hideRead} onChange={event => setHideRead(event.target.checked)} className="accent-[var(--accent)]" />隐藏已读
+        </label>
+        {/* 排序切换 */}
 				<button
 					onClick={() => setSortOrder(sortOrder === "desc" ? "asc" : "desc")}
 					title={sortOrder === "desc" ? "最新在前" : "最旧在前"}
-					className="w-7 h-7 flex items-center justify-center rounded-lg text-[var(--text-tertiary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] transition-colors"
+					className="min-w-11 min-h-11 flex items-center justify-center rounded-lg text-[var(--text-tertiary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] transition-colors"
 				>
 					<svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
 						{sortOrder === "desc" ? (
@@ -68,7 +80,8 @@ export function ArticleList() {
 				</button>
 			</div>
 
-			{/* 文章列表 */}
+			{articleActionError && <p role="alert" className="px-4 py-2 text-sm text-[var(--text-secondary)]">{articleActionError}</p>}
+      {/* 文章列表 */}
 			<div className="flex-1 overflow-y-auto">
 				{isLoading && articles.length === 0 ? (
 					<div>
@@ -76,18 +89,26 @@ export function ArticleList() {
 							<ArticleCardSkeleton key={i} />
 						))}
 					</div>
-				) : articles.length === 0 ? (
-					<EmptyState
+				) : visibleArticles.length === 0 ? (
+					<div className="flex h-full flex-col items-center justify-center">
+          <EmptyState
 						icon="📭"
-						title="暂无文章"
-						description="添加订阅源后，文章将在这里显示"
-						className="h-full"
+						title={hideRead ? "暂无未读文章" : "暂无文章"}
+						description={hideRead ? "可显示全部文章继续阅读" : "添加订阅源后，文章将在这里显示"}
+						className=""
 					/>
+          {hideRead && <button className="min-h-11 rounded-lg bg-[var(--accent-light)] px-4 text-sm" onClick={() => setHideRead(false)}>显示全部</button>}
+          </div>
 				) : (
 					<>
-						{articles.map((article, index) => (
-							<ArticleCard key={article.id} article={article} index={index} />
-						))}
+						<AnimatePresence initial={false}>
+              {visibleArticles.map((article, index) => (
+                <motion.div key={article.id} layout={reduceMotion ? false : "position"}
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15, ease: "easeOut" }}>
+                  <ArticleCard article={article} index={index} />
+                </motion.div>
+              ))}
+            </AnimatePresence>
 
 						{/* 无限滚动触发器 */}
 						<div ref={bottomRef} className="h-4" />

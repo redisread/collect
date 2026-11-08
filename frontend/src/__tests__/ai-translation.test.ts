@@ -77,3 +77,24 @@ it("restores and continues an explicitly requested summary without extracting fu
   expect(await useArticleStore.getState().continueTranslation()).toBe(true);
   expect(fetchMock.mock.calls.some(call => call[0].includes("/extract"))).toBe(false);
 });
+
+it("pauses new requests while persisting the already-started batch to the current view", async () => {
+  let finish!: (response: Response) => void;
+  let batchSignal: AbortSignal | undefined;
+  const mock = vi.fn().mockImplementation(async (url: string, options: RequestInit) => {
+    if (url === "/api/ai-translate/start") return response({ ...progress(0), progressVersion: "v0", pending: 2, failed: 0 });
+    batchSignal = options.signal as AbortSignal;
+    return new Promise(resolve => { finish = resolve; });
+  });
+  vi.stubGlobal("fetch", mock);
+  const pending = useArticleStore.getState().translateArticle("a", "Hello", "zh-CN", profile);
+  await vi.waitFor(() => expect(finish).toBeDefined());
+  useArticleStore.getState().pauseTranslation();
+  expect(useArticleStore.getState().isPausingTranslation).toBe(true);
+  expect(batchSignal?.aborted).toBe(false);
+  finish(response({ ...progress(1), progressVersion: "v1", pending: 1, failed: 0 }));
+  expect(await pending).toBe(false);
+  expect(useArticleStore.getState().aiProgress?.completed).toBe(1);
+  expect(useArticleStore.getState().isTranslating).toBe(false);
+  expect(mock.mock.calls.filter(call => call[0].endsWith("/step"))).toHaveLength(1);
+});
