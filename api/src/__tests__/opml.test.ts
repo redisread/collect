@@ -148,3 +148,55 @@ it("recovers a large queued import on a later scheduler run without re-sending t
   await dispatchImportItems(env);
   expect(vi.mocked(env.FEED_SYNC_QUEUE.sendBatch)).toHaveBeenCalledTimes(2);
 });
+
+it("delays temporary failures, prevents early duplicates, and stops after three fetches", async () => {
+  const { FeedFetchError } = await import("../lib/rss/feed-error");
+  const { consumeImportMessage } = await import("../services/OpmlImportService");
+  const id = await createImportPreview(env, "owner", file(source("https://example.com/retry")), "retry.opml");
+  await confirmImport(env, "owner", id);
+  const item = (await getImportJob(env, "owner", id))!.items[0];
+  const fetcher = { fetch: vi.fn().mockRejectedValue(new FeedFetchError("http_transient", true)) };
+  const message = {body:{source:"opml-import" as const,itemId:item.id},ack:vi.fn(),retry:vi.fn()};
+  await consumeImportMessage(env, message, fetcher);
+  expect(message.retry).toHaveBeenLastCalledWith({delaySeconds:60});
+  expect(message.ack).not.toHaveBeenCalled();
+  await consumeImportMessage(env, message, fetcher);
+  expect(fetcher.fetch).toHaveBeenCalledTimes(1);
+  for (let i=0;i<2;i++) {
+    database.sqlite.exec("UPDATE opml_import_items SET lease_until=0,next_dispatch_at=0");
+    await consumeImportMessage(env, message, fetcher);
+  }
+  expect(fetcher.fetch).toHaveBeenCalledTimes(3);
+  expect(message.ack).toHaveBeenCalledOnce();
+  expect(await getImportJob(env,"owner",id)).toMatchObject({status:"completed",failed:1});
+  expect(database.sqlite.prepare("SELECT count(*) AS n FROM feeds").get().n).toBe(0);
+});
+
+it("persists a recovered fetch and ignores a stale lease completion", async () => {
+  const id = await createImportPreview(env,"owner",file(source("https://example.com/stale")),"stale.opml");
+  await confirmImport(env,"owner",id);
+  const item = (await getImportJob(env,"owner",id))!.items[0];
+  let resolve!: (value: ParsedFeedWithMeta)=>void;
+  const first = processImportItem(env,item.id,{fetch:vi.fn(()=>new Promise<ParsedFeedWithMeta>(r=>{resolve=r;}))});
+  await vi.waitFor(()=>expect(resolve).toBeTypeOf("function"));
+  database.sqlite.exec("UPDATE opml_import_items SET lease_until=0");
+  await processImportItem(env,item.id,{fetch:vi.fn().mockResolvedValue(parsed)});
+  resolve({...parsed,title:"stale"}); await first;
+  expect(database.sqlite.prepare("SELECT count(*) AS n FROM feeds").get().n).toBe(1);
+  expect(database.sqlite.prepare("SELECT count(*) AS n FROM articles").get().n).toBe(1);
+  expect(await getImportJob(env,"owner",id)).toMatchObject({status:"completed",imported:1});
+});
+
+it("saves a transient failure that recovers on the next attempt", async () => {
+  const { FeedFetchError } = await import("../lib/rss/feed-error");
+  const id = await createImportPreview(env,"owner",file(source("https://example.com/recovery")),"recovery.opml");
+  await confirmImport(env,"owner",id);
+  const item=(await getImportJob(env,"owner",id))!.items[0];
+  const fetcher={fetch:vi.fn().mockRejectedValueOnce(new FeedFetchError("network",true)).mockResolvedValue(parsed)};
+  await expect(processImportItem(env,item.id,fetcher)).rejects.toMatchObject({delaySeconds:60});
+  expect(database.sqlite.prepare("SELECT count(*) AS n FROM feeds").get().n).toBe(0);
+  database.sqlite.exec("UPDATE opml_import_items SET lease_until=0,next_dispatch_at=0");
+  await processImportItem(env,item.id,fetcher);
+  expect(fetcher.fetch).toHaveBeenCalledTimes(2);
+  expect(await getImportJob(env,"owner",id)).toMatchObject({status:"completed",imported:1,failed:0});
+});

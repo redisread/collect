@@ -12,7 +12,8 @@
     "lint": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:runtime": "node scripts/test-opml-runtime.mjs"
   },
   "dependencies": {
     "@hono/zod-validator": "^0.9.0",

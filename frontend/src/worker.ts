@@ -1,3 +1,4 @@
+import { runScheduledTasks } from "../../api/src/lib/scheduler/isolated-tasks";
 import astroWorker from "@astrojs/cloudflare/entrypoints/server";
 import { Hono } from "hono";
 import apiApp from "../../api/src/app";
@@ -11,7 +12,7 @@ import {
 } from "../../api/src/queue/feed-sync";
 import { FeedSyncService } from "../../api/src/services/FeedSyncService";
 import type { CloudflareEnv } from "../../api/src/types";
-import { dispatchImportItems, processImportItem, type OpmlImportMessage } from "../../api/src/services/OpmlImportService";
+import { dispatchImportItems, consumeImportMessage, type OpmlImportMessage } from "../../api/src/services/OpmlImportService";
 
 const app = new Hono<{ Bindings: CloudflareEnv }>();
 
@@ -35,15 +36,19 @@ const worker = {
   fetch: app.fetch,
   async scheduled(controller, env) {
     if (controller.cron === "*/5 * * * *") {
-      await dispatchImportItems(env);
-      const feedIds = await createFeedSyncService(env).listDueFeedIds(200);
-      const queued = await enqueueFeedSyncMessages(
-        env.FEED_SYNC_QUEUE,
-        feedIds,
-        crypto.randomUUID(),
-        "scheduled",
-      );
-      console.log(JSON.stringify({ event: "feed_sync_dispatched", queued }));
+      await runScheduledTasks([
+        { stage: "opml_dispatch", run: () => dispatchImportItems(env) },
+        { stage: "feed_sync_dispatch", run: async () => {
+          const feedIds = await createFeedSyncService(env).listDueFeedIds(200);
+          const queued = await enqueueFeedSyncMessages(
+            env.FEED_SYNC_QUEUE,
+            feedIds,
+            crypto.randomUUID(),
+            "scheduled",
+          );
+          console.log(JSON.stringify({ event: "feed_sync_dispatched", queued }));
+        } },
+      ]);
       return;
     }
 
@@ -62,13 +67,7 @@ const worker = {
     const importMessages = batch.messages.filter((message): message is Message<OpmlImportMessage> => message.body.source === "opml-import");
     await Promise.all([
       consumeFeedSyncBatch({ messages: syncMessages }, (feedId) => service.syncQueuedFeed(feedId)),
-      ...importMessages.map(async message => {
-        try { await processImportItem(env, message.body.itemId); message.ack(); }
-        catch {
-          console.warn(JSON.stringify({ event: "opml_item_retry", itemId: message.body.itemId }));
-          message.retry({ delaySeconds: 60 });
-        }
-      }),
+      ...importMessages.map(message => consumeImportMessage(env, message)),
     ]);
   },
 } satisfies ExportedHandler<CloudflareEnv, FeedSyncMessage | OpmlImportMessage>;
