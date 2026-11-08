@@ -50,14 +50,6 @@ struct ArticleListView: View {
                 Text(store.feeds.first { $0.id == article.feedId }?.title ?? "订阅").font(.caption)
                   .foregroundStyle(.secondary)
                 Spacer()
-                if let record = store.records[article.id], record.bodyHTML != nil {
-                  Image(
-                    systemName: CacheFiles.isComplete(record)
-                      ? "arrow.down.circle.fill" : "arrow.down.circle"
-                  )
-                  .foregroundStyle(.secondary)
-                  .accessibilityLabel(CacheFiles.isComplete(record) ? "正文和图片已缓存" : "图片待下载")
-                }
                 if article.isRead != true {
                   Circle().fill(.orange).frame(width: 6, height: 6).accessibilityLabel("未读")
                 }

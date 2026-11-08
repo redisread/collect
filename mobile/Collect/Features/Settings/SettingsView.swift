@@ -31,7 +31,6 @@ struct SettingsView: View {
           Text("English").tag("en")
           Text("日本語").tag("ja")
         }
-        NavigationLink("离线缓存") { OfflineView() }
       }
       Section("订阅文件") {
         Button("导入 OPML") { importing = true }
@@ -90,7 +89,7 @@ struct SettingsView: View {
       ) { result in
         if case .failure(let error) = result { message = error.localizedDescription }
       }
-      .confirmationDialog("退出当前账号？离线修改将在下次登录后继续同步。", isPresented: $logout) {
+      .confirmationDialog("退出当前账号？尚未同步的修改将在下次登录后继续同步。", isPresented: $logout) {
         Button("退出登录", role: .destructive) { Task { await store.signOut() } }
       }
   }

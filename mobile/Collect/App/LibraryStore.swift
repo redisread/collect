@@ -16,24 +16,27 @@ final class LibraryStore {
   var error: String?
   var conflicts: [String] = []
   var isSyncing = false
-  var isCaching = false
-  var cachePaused = UserDefaults.standard.bool(forKey: "offlinePaused")
-  private var cacheGeneration = 0
-  var offlineRevision: Int { cacheGeneration }
+  private var cacheTask: Task<Void, Never>?
+  private var cacheRequested = false
   private var refreshTask: Task<Void, Never>?
   private var catalogGeneration = 0
   private var launchSession: String?
   private var uploadTask: Task<Void, Never>?
   private var uploadRequested = false
   var records: [String: CachedArticle] = [:]
-  var cacheLimit = UserDefaults.standard.object(forKey: "offlineLimit") as? Int ?? 100
+  private let cacheLimit: Int
   var articleRetentionDays = 30
   var language = UserDefaults.standard.string(forKey: "translationLanguage") ?? "zh-CN"
   private var context: ModelContext { container.mainContext }
 
-  init(container: ModelContainer, api: APIClient, restoreSession: Bool = true) {
+  init(
+    container: ModelContainer, api: APIClient, restoreSession: Bool = true,
+    defaults: UserDefaults = .standard
+  ) {
     self.container = container
     self.api = api
+    cacheLimit = defaults.object(forKey: "offlineLimit") as? Int ?? 100
+    defaults.removeObject(forKey: "offlinePaused")
     do {
       session = restoreSession ? try SessionVault.read() : nil
       try reloadLocal()
@@ -173,7 +176,7 @@ final class LibraryStore {
         "/api/native/articles/\(item.articleID)", method: "PATCH", token: saved.token, body: body)
       guard session?.token == saved.token else { return }
       if code == 404 {
-        try recordConflict("一篇文章已被删除，离线修改未应用", owner: saved.account.id)
+        try recordConflict("一篇文章已被删除，修改未同步", owner: saved.account.id)
         context.delete(item)
         if let record = records.removeValue(forKey: item.articleID) { context.delete(record) }
         try context.save()
@@ -285,7 +288,7 @@ final class LibraryStore {
       }
       if unchanged, !rebuilding {
         status = "已是最新"
-        await cacheArticles(saved)
+        cacheArticles(saved)
         return
       }
       let catalog = try existingCatalog ?? makeCatalog(owner)
@@ -337,7 +340,7 @@ final class LibraryStore {
       try context.save()
       try reloadLocal()
       status = "同步完成 · \(count) 篇变化"
-      await cacheArticles(saved)
+      cacheArticles(saved)
     } catch is CancellationError {
       context.rollback()
       try? reloadLocal()
@@ -346,7 +349,7 @@ final class LibraryStore {
       context.rollback()
       try? reloadLocal()
       self.error = error.localizedDescription
-      status = "当前显示本地内容"
+      status = "暂时无法刷新，请稍后重试"
     }
   }
 
@@ -429,67 +432,85 @@ final class LibraryStore {
     session = saved
   }
 
-  func prepareArticle(_ id: String, extract: Bool = false) async {
+  func prepareArticle(_ id: String, extract: Bool = false) async throws {
     guard let saved = session, let record = records[id] else { return }
     let shouldExtract =
       extract && (try? record.decode().isExtracted) != true
       && feeds.first(where: { $0.id == (try? record.decode().feedId) })?.autoExtract == true
     guard record.bodyHTML == nil || shouldExtract else { return }
-    let generation = cacheGeneration
-    do {
-      let body: ArticleDTO = try await api.request(
-        "/api/native/articles/\(id)" + (shouldExtract ? "?extract=true" : ""), token: saved.token)
-      guard session?.token == saved.token else { return }
-      guard generation == cacheGeneration, records[id] === record else { return }
-      let currentVersion = try record.decode().contentVersion ?? 0
-      guard (body.contentVersion ?? 0) >= currentVersion else { return }
-      if record.bodyHTML != body.content {
-        record.translatedHTML = nil
-        record.bilingualHTML = nil
-      }
-      try mergeArticle(body, owner: saved.account.id)
-      record.bodyHTML = body.content ?? ""
-      record.imageURLs = body.images ?? []
-      record.cachedAt = .now
-      try context.save()
-      for image in record.imageURLs {
-        BackgroundDownloads.shared.enqueue(owner: saved.account.id, source: image)
-      }
-    } catch { self.error = "正文暂不可用，联网后重试。\(error.localizedDescription)" }
+    let body: ArticleDTO = try await api.request(
+      "/api/native/articles/\(id)" + (shouldExtract ? "?extract=true" : ""), token: saved.token)
+    guard session?.token == saved.token else { return }
+    guard records[id] === record else { return }
+    let currentVersion = try record.decode().contentVersion ?? 0
+    guard (body.contentVersion ?? 0) >= currentVersion else { return }
+    if record.bodyHTML != body.content {
+      record.translatedHTML = nil
+      record.bilingualHTML = nil
+    }
+    try mergeArticle(body, owner: saved.account.id)
+    record.bodyHTML = body.content ?? ""
+    record.imageURLs = body.images ?? []
+    record.cachedAt = .now
+    try context.save()
+    for image in record.imageURLs {
+      BackgroundDownloads.shared.enqueue(owner: saved.account.id, source: image)
+    }
   }
 
-  func cacheArticles(_ saved: SavedSession) async {
-    guard !isCaching, !cachePaused, session?.token == saved.token else { return }
-    isCaching = true
-    defer { isCaching = false }
+  @discardableResult
+  func cacheArticles(_ saved: SavedSession) -> Task<Void, Never>? {
+    guard session?.token == saved.token else { return nil }
+    cacheRequested = true
+    if let cacheTask { return cacheTask }
+    let task = Task { @MainActor in
+      defer { cacheTask = nil }
+      repeat {
+        cacheRequested = false
+        guard let current = session else { return }
+        await prepareLibraryArticles(current)
+      } while cacheRequested
+    }
+    cacheTask = task
+    return task
+  }
+
+  func networkAvailable() async {
+    await uploadPending()
+    guard let saved = session else { return }
+    await cacheArticles(saved)?.value
+  }
+
+  private func prepareLibraryArticles(_ saved: SavedSession) async {
     let protected = articles.filter { $0.isStarred == true || $0.isReadLater == true }
     let unread = articles.filter { $0.isRead != true }.prefix(max(1, cacheLimit))
     let ids = Set(protected.map(\.id) + unread.map(\.id))
     for article in articles where ids.contains(article.id) {
-      if Task.isCancelled || cachePaused || session?.token != saved.token { return }
-      let hadBody = records[article.id]?.bodyHTML != nil
-      await prepareArticle(article.id)
-      if hadBody, let record = records[article.id] {
-        for image in record.imageURLs {
-          BackgroundDownloads.shared.enqueue(owner: saved.account.id, source: image)
-        }
-      }
+      if Task.isCancelled || session?.token != saved.token { return }
+      try? await prepareArticle(article.id)
+      guard !Task.isCancelled, session?.token == saved.token else { return }
     }
     do {
       let cutoff = Date.now.addingTimeInterval(-Double(articleRetentionDays) * 86400)
-      for article in articles where !ids.contains(article.id) {
+      for article in articles {
         guard let record = records[article.id] else { continue }
-        if article.isRead != true || (record.readAt ?? record.cachedAt ?? .now) < cutoff {
+        let protected = article.isStarred == true || article.isReadLater == true
+        if !protected, !ids.contains(article.id),
+          article.isRead != true || (record.readAt ?? record.cachedAt ?? .now) < cutoff
+        {
           record.bodyHTML = nil
           record.imageURLs = []
           record.cachedAt = nil
           record.translatedHTML = nil
           record.bilingualHTML = nil
         }
+        for image in record.imageURLs {
+          BackgroundDownloads.shared.enqueue(owner: saved.account.id, source: image)
+        }
       }
       try context.save()
       try removeUnusedImages()
-    } catch { self.error = error.localizedDescription }
+    } catch { /* Retry maintenance on the next preparation pass. */ }
   }
 
   private func removeUnusedImages() throws {
@@ -503,24 +524,6 @@ final class LibraryStore {
     where !referenced.contains(file.lastPathComponent) {
       try FileManager.default.removeItem(at: file)
     }
-  }
-
-  func clearCache() async {
-    cacheGeneration += 1
-    cachePaused = true
-    UserDefaults.standard.set(true, forKey: "offlinePaused")
-    await BackgroundDownloads.shared.cancelAll()
-    do {
-      for record in records.values {
-        record.bodyHTML = nil
-        record.imageURLs = []
-        record.cachedAt = nil
-        record.translatedHTML = nil
-        record.bilingualHTML = nil
-      }
-      try context.save()
-      try removeUnusedImages()
-    } catch { self.error = error.localizedDescription }
   }
 
   func applyFeed(_ feed: FeedDTO) throws {
@@ -560,7 +563,7 @@ final class LibraryStore {
     await uploadPending()
     guard session?.token == saved.token else { return }
     guard try pending(saved.account.id).isEmpty else {
-      throw APIError(status: 0, message: "请先联网同步离线修改，再取消订阅，以保留收藏和稍后阅读")
+      throw APIError(status: 0, message: "尚有修改未同步，请同步后再取消订阅，以保留收藏和稍后阅读")
     }
     let response: SubscriptionBatchResponse = try await api.request(
       "/api/feeds/batch/unsubscribe", method: "POST", token: saved.token,
@@ -666,6 +669,6 @@ final class LibraryStore {
     value.folders = try JSONEncoder().encode(folders)
     try context.save()
     try reloadLocal()
-    if method == "POST", path == "/api/feeds" { await cacheArticles(saved) }
+    if method == "POST", path == "/api/feeds" { cacheArticles(saved) }
   }
 }

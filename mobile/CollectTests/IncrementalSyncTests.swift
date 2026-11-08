@@ -12,7 +12,9 @@ actor CountingTransport: HTTPTransport {
       "\(request.httpMethod ?? "GET") \(request.url!.path)?\(request.url!.query ?? "")")
     return try await preview.send(request)
   }
-  func calls() -> [String] { requests }
+  func calls() -> [String] {
+    requests.filter { !$0.hasPrefix("GET /api/native/articles/") }
+  }
 }
 
 actor PagedSyncTransport: HTTPTransport {
@@ -57,7 +59,6 @@ struct IncrementalSyncTests {
       restoreSession: false)
     store.session = SavedSession(
       token: "test", account: Account(id: "owner", name: "Owner", email: "owner@example.invalid"))
-    store.cachePaused = true
     return store
   }
 
@@ -171,7 +172,7 @@ actor BodyRaceTransport: HTTPTransport {
       "id": "a", "feedId": "f", "title": "Article", "url": "https://example.com/a",
       "readVersion": 0,
       "starVersion": 0, "laterVersion": 0, "progressVersion": 0, "contentVersion": version,
-      "isExtracted": true, "content": "<p>Version \(version)</p>",
+      "isRead": true, "isExtracted": true, "content": "<p>Version \(version)</p>",
     ]
   }
   func send(_ request: URLRequest) async throws -> (Data, Int) {
@@ -201,14 +202,14 @@ extension IncrementalSyncTests {
     let transport = BodyRaceTransport()
     let store = try makeStore(transport)
     await store.sync()
-    let oldBody = Task { await store.prepareArticle("a") }
+    let oldBody = Task { try await store.prepareArticle("a") }
     await transport.waitForBody()
     await store.sync()
     #expect(try store.records["a"]?.decode().contentVersion == 2)
     await transport.resumeBody()
-    await oldBody.value
+    try await oldBody.value
     #expect(store.records["a"]?.bodyHTML == nil)
-    await store.prepareArticle("a")
+    try await store.prepareArticle("a")
     #expect(store.records["a"]?.bodyHTML == "<p>Version 2</p>")
   }
 }

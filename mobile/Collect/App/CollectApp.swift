@@ -64,7 +64,7 @@ struct CollectApp: App {
           .task {
             for await path in NWPathMonitor() {
               if Task.isCancelled { break }
-              if path.status == .satisfied { await store.uploadPending() }
+              if path.status == .satisfied { await store.networkAvailable() }
             }
           }
           .task(id: store.session?.account.id) {

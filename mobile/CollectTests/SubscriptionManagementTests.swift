@@ -15,9 +15,8 @@ struct SubscriptionManagementTests {
       restoreSession: false)
     store.session = SavedSession(
       token: "test", account: Account(id: "owner", name: "Owner", email: "owner@example.invalid"))
-    store.cachePaused = true
     await store.sync()
-    await store.prepareArticle("sample")
+    try await store.prepareArticle("sample")
     let body = store.records["sample"]?.bodyHTML
     store.change("sample", field: .isStarred, value: 1)
     try await store.unsubscribe(["feed"])
@@ -42,7 +41,6 @@ struct SubscriptionManagementTests {
     let session = SavedSession(
       token: "test", account: Account(id: "owner", name: "Owner", email: "owner@example.invalid"))
     initial.session = session
-    initial.cachePaused = true
     await initial.sync()
     initial.change("sample", field: .isStarred, value: 1)
     let offline = LibraryStore(
@@ -68,7 +66,6 @@ struct SubscriptionManagementTests {
       restoreSession: false)
     store.session = SavedSession(
       token: "test", account: Account(id: "owner", name: "Owner", email: "owner@example.invalid"))
-    store.cachePaused = true
     await store.sync()
     try await store.moveSubscriptions(["feed"], to: "test-folder")
     #expect(store.feeds.first(where: { $0.id == "feed" })?.folderId == "test-folder")
