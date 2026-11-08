@@ -440,6 +440,8 @@ final class LibraryStore {
         "/api/native/articles/\(id)" + (shouldExtract ? "?extract=true" : ""), token: saved.token)
       guard session?.token == saved.token else { return }
       guard generation == cacheGeneration, records[id] === record else { return }
+      let currentVersion = try record.decode().contentVersion ?? 0
+      guard (body.contentVersion ?? 0) >= currentVersion else { return }
       if record.bodyHTML != body.content {
         record.translatedHTML = nil
         record.bilingualHTML = nil

@@ -153,3 +153,62 @@ extension IncrementalSyncTests {
     #expect(catalogs.map(\.owner) == ["new-owner"])
   }
 }
+
+actor BodyRaceTransport: HTTPTransport {
+  private var bodyStarted = false
+  private var waiter: CheckedContinuation<Void, Never>?
+  private var release: CheckedContinuation<Void, Never>?
+  func waitForBody() async {
+    if bodyStarted { return }
+    await withCheckedContinuation { waiter = $0 }
+  }
+  func resumeBody() {
+    release?.resume()
+    release = nil
+  }
+  private func article(version: Int) -> [String: Any] {
+    [
+      "id": "a", "feedId": "f", "title": "Article", "url": "https://example.com/a",
+      "readVersion": 0,
+      "starVersion": 0, "laterVersion": 0, "progressVersion": 0, "contentVersion": version,
+      "isExtracted": true, "content": "<p>Version \(version)</p>",
+    ]
+  }
+  func send(_ request: URLRequest) async throws -> (Data, Int) {
+    let data: [String: Any]
+    if request.url!.path == "/api/native/sync" {
+      let version = request.url!.query == "after=0" ? 1 : 2
+      data = [
+        "cursor": version, "hasMore": false, "articles": [article(version: version)], "feeds": [],
+        "folders": [], "deleted": [],
+      ]
+    } else {
+      let version = bodyStarted ? 2 : 1
+      if !bodyStarted {
+        bodyStarted = true
+        waiter?.resume()
+        waiter = nil
+        await withCheckedContinuation { release = $0 }
+      }
+      data = article(version: version)
+    }
+    return (try JSONSerialization.data(withJSONObject: ["success": true, "data": data]), 200)
+  }
+}
+
+extension IncrementalSyncTests {
+  @Test @MainActor func delayedOldBodyCannotOverwriteNewContentVersion() async throws {
+    let transport = BodyRaceTransport()
+    let store = try makeStore(transport)
+    await store.sync()
+    let oldBody = Task { await store.prepareArticle("a") }
+    await transport.waitForBody()
+    await store.sync()
+    #expect(try store.records["a"]?.decode().contentVersion == 2)
+    await transport.resumeBody()
+    await oldBody.value
+    #expect(store.records["a"]?.bodyHTML == nil)
+    await store.prepareArticle("a")
+    #expect(store.records["a"]?.bodyHTML == "<p>Version 2</p>")
+  }
+}
