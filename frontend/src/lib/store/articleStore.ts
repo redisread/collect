@@ -264,22 +264,32 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 		const requestId = ++articleListRequestId;
 		set({ isLoading: true });
 		try {
-			const url = buildArticleUrl(source, 1, get().sortOrder, reset ? null : get().selectedArticleId);
-			const res = await fetch(url, { credentials: "include", signal: AbortSignal.timeout(15_000) });
-			const json = await res.json() as {
-				success: boolean;
-				data: { articles: ArticleListItem[]; total: number; page: number; pageSize: number };
-			};
-			if (!res.ok || !json.success) return false;
-			if (requestId === articleListRequestId) {
-				set({
-					articles: json.data.articles,
-					total: json.data.total,
-					page: 1,
-					hasMore: json.data.articles.length < json.data.total,
-					...(reset ? { selectedArticleId: null, selectedArticle: null } : {}),
-				});
-			}
+      const pageCount = reset ? 1 : Math.max(1, get().page);
+      const selectedId = reset ? null : get().selectedArticleId;
+      const current = get().articles.find(article => article.id === selectedId) ?? get().selectedArticle;
+      const pages = await Promise.all(Array.from({ length: pageCount }, async (_, index) => {
+        const url = buildArticleUrl(source, index + 1, get().sortOrder, selectedId);
+        const res = await fetch(url, { credentials: "include", signal: AbortSignal.timeout(15_000) });
+        const json = await res.json() as { success: boolean; data: { articles: ArticleListItem[]; total: number } };
+        if (!res.ok || !json.success) throw new Error("列表刷新失败");
+        return json.data;
+      }));
+      if (requestId === articleListRequestId) {
+        const refreshed = Array.from(new Map(pages.flatMap(page => page.articles).map(article => [article.id, article])).values());
+        const matchesSource = current &&
+          (source.type !== "starred" || current.isStarred) &&
+          (source.type !== "read_later" || current.isReadLater) &&
+          (source.type !== "feed" || current.feedId === source.feedId) &&
+          (source.type !== "folder" || useFeedStore.getState().feeds.find(feed => feed.id === current.feedId)?.folderId === source.folderId);
+        if (selectedId && useUiStore.getState().hideRead && matchesSource && !refreshed.some(article => article.id === selectedId)) {
+          refreshed.push(current);
+        }
+        set({
+          articles: refreshed, total: pages[0].total, page: pageCount,
+          hasMore: pageCount * PAGE_SIZE < pages[0].total,
+          ...(reset ? { selectedArticleId: null, selectedArticle: null } : {}),
+        });
+      }
 			return true;
 		} catch {
 			return false;
@@ -289,8 +299,8 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 	},
 
 	fetchMoreArticles: async (source) => {
-		const { page, articles, total, isLoading } = get();
-		if (isLoading || articles.length >= total) return;
+		const { page, hasMore, isLoading } = get();
+		if (isLoading || !hasMore) return;
 
 		const requestId = ++articleListRequestId;
 		set({ isLoading: true });
@@ -304,9 +314,10 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 			};
 			if (requestId === articleListRequestId && json.success) {
 				set((state) => ({
-					articles: [...state.articles, ...json.data.articles],
+					articles: Array.from(new Map([...state.articles, ...json.data.articles].map(article => [article.id, article])).values()),
 					page: nextPage,
-					hasMore: state.articles.length + json.data.articles.length < json.data.total,
+					hasMore: nextPage * PAGE_SIZE < json.data.total,
+          total: json.data.total,
 				}));
 			}
 		} finally {

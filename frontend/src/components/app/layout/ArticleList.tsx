@@ -13,7 +13,7 @@ export function ArticleList() {
 		useArticleStore();
 	const { selectedSource } = useFeedStore();
   const { hideRead, setHideRead } = useUiStore();
-  const { selectedArticleId, articleActionError } = useArticleStore();
+  const { selectedArticleId, isLoadingDetail, articleActionError } = useArticleStore();
   const visibleArticles = articles.filter(article => !hideRead || !article.isRead || article.id === selectedArticleId);
 	const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -21,8 +21,8 @@ export function ArticleList() {
 		void useArticleStore.getState().fetchArticles(useFeedStore.getState().selectedSource, false);
 	}, [sortOrder, hideRead]);
 	useEffect(() => {
-		if (useUiStore.getState().hideRead) void useArticleStore.getState().fetchArticles(useFeedStore.getState().selectedSource, false);
-	}, [selectedArticleId]);
+		if (!isLoadingDetail && useUiStore.getState().hideRead) void useArticleStore.getState().fetchArticles(useFeedStore.getState().selectedSource, false);
+	}, [selectedArticleId, isLoadingDetail]);
 
 	// 无限滚动加载
 	const handleObserver = useCallback(

@@ -28,3 +28,22 @@ it("preserves state and reports failed status writes", async () => {
   expect(useArticleStore.getState().articleActionError).toContain("保存失败");
   expect(useArticleStore.getState().pendingArticleIds).toEqual([]);
 });
+
+it("refreshes the loaded page range without dropping a selected article on page two", async () => {
+  const articles = Array.from({ length: 65 }, (_, i) => ({ id: String(i), title: String(i), isRead: false, isStarred: true } as Article));
+  useUiStore.setState({ hideRead: true });
+  useArticleStore.setState({ page: 2, articles: articles.slice(0, 60), selectedArticleId: "39", selectedArticle: articles[39], isLoading: false });
+  const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+    const page = Number(new URL(url, "https://collect.test").searchParams.get("page"));
+    return Response.json({ success: true, data: { articles: articles.slice((page - 1) * 30, page * 30), total: 65 } });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  await useArticleStore.getState().fetchArticles({ type: "starred" }, false);
+  expect(useArticleStore.getState().articles).toHaveLength(60);
+  expect(useArticleStore.getState().articles[39].id).toBe("39");
+  expect(useArticleStore.getState().selectedArticleId).toBe("39");
+  expect(useArticleStore.getState().page).toBe(2);
+  await useArticleStore.getState().fetchMoreArticles({ type: "starred" });
+  expect(useArticleStore.getState().articles).toHaveLength(65);
+  expect(useArticleStore.getState().hasMore).toBe(false);
+});
