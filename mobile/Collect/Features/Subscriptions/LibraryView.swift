@@ -3,10 +3,13 @@ import SwiftUI
 struct LibraryView: View {
   @Environment(LibraryStore.self) private var store
   @State private var showAdd = false
+  @State private var path: [ArticleScope] = []
+  @State private var expandedFolders: Set<ArticleScope> = []
   @State private var deepLinkArticle: String?
+  @State private var managedFolderID: String?
 
   var body: some View {
-    NavigationStack {
+    NavigationStack(path: $path) {
       List {
         Section {
           destination("全部文章", icon: "tray", scope: .all, count: store.articles.count)
@@ -22,31 +25,22 @@ struct LibraryView: View {
         }
         Section("订阅") {
           ForEach(store.folders) { folder in
-            DisclosureGroup {
-              NavigationLink("查看文件夹文章", value: ArticleScope.folder(folder.id))
-              ForEach(store.feeds.filter { $0.folderId == folder.id }) { feedRow($0) }
-            } label: {
-              HStack {
-                Label(folder.name, systemImage: "folder")
-                Spacer()
-                Text(unread(folder: folder.id), format: .number).foregroundStyle(.secondary)
+            folderRow(folder.name, folderID: folder.id, scope: .folder(folder.id))
+              .contextMenu {
+                Button("管理文件夹") { managedFolderID = folder.id }
+              }
+            if expandedFolders.contains(.folder(folder.id)) {
+              ForEach(store.feeds.filter { $0.folderId == folder.id }) {
+                feedRow($0).padding(.leading, 28)
               }
             }
-            .contextMenu {
-              NavigationLink("管理文件夹") { FolderEditor(folder: folder) }
+          }
+          folderRow("未分类", folderID: nil, scope: .unfiled)
+          if expandedFolders.contains(.unfiled) {
+            ForEach(store.feeds.filter { $0.folderId == nil }) {
+              feedRow($0).padding(.leading, 28)
             }
           }
-          DisclosureGroup {
-            NavigationLink("查看未分类文章", value: ArticleScope.unfiled)
-            ForEach(store.feeds.filter { $0.folderId == nil }) { feedRow($0) }
-          } label: {
-            HStack {
-              Label("未分类", systemImage: "folder")
-              Spacer()
-              Text(unread(folder: nil), format: .number).foregroundStyle(.secondary)
-            }
-          }
-          .accessibilityIdentifier("unclassified-folder")
         }
         Section {
           NavigationLink {
@@ -76,6 +70,11 @@ struct LibraryView: View {
       }
       .refreshable { await store.sync() }
       .navigationDestination(for: ArticleScope.self) { ArticleListView(scope: $0) }
+      .navigationDestination(item: $managedFolderID) { id in
+        if let folder = store.folders.first(where: { $0.id == id }) {
+          FolderEditor(folder: folder)
+        }
+      }
       .navigationDestination(item: $deepLinkArticle) { ReaderView(articleID: $0) }
       .sheet(isPresented: $showAdd) { AddSubscriptionView() }
       .onOpenURL { url in
@@ -85,6 +84,43 @@ struct LibraryView: View {
       }
     }
   }
+  private func folderRow(_ name: String, folderID: String?, scope: ArticleScope) -> some View {
+    let expanded = expandedFolders.contains(scope)
+    let identifier = folderID.map { "folder-\($0)" } ?? "unclassified-folder"
+    return HStack(spacing: 0) {
+      Button {
+        path.append(scope)
+      } label: {
+        HStack {
+          Label(name, systemImage: "folder")
+          Spacer()
+          Text(unread(folder: folderID), format: .number).foregroundStyle(.secondary)
+        }
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .accessibilityIdentifier(identifier)
+      .accessibilityHint("查看目录中的文章")
+      Button {
+        if expanded {
+          expandedFolders.remove(scope)
+        } else {
+          expandedFolders.insert(scope)
+        }
+      } label: {
+        Image(systemName: expanded ? "chevron.down" : "chevron.right")
+          .font(.footnote.weight(.semibold))
+          .frame(width: 44, height: 44)
+          .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel("\(expanded ? "收起" : "展开")\(name)订阅源")
+      .accessibilityValue(expanded ? "已展开" : "已收起")
+      .accessibilityIdentifier("\(identifier)-expand")
+    }
+  }
+
   private func destination(_ name: String, icon: String, scope: ArticleScope, count: Int)
     -> some View
   {
