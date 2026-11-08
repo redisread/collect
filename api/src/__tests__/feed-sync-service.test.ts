@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getDb } from "../db";
 import { FeedSyncService, type ParsedFeedWithMeta } from "../services/FeedSyncService";
@@ -23,7 +23,10 @@ afterEach(() => databases.splice(0).forEach((database) => database.close()));
 function setup(articleCount = 1) {
   const sqlite = new DatabaseSync(":memory:");
   databases.push(sqlite);
-  sqlite.exec(readFileSync(new URL("../../drizzle/migrations/0000_complete_schema.sql", import.meta.url), "utf8"));
+  const migrations = new URL("../../drizzle/migrations/", import.meta.url);
+  for (const file of readdirSync(migrations).filter(file => file.endsWith(".sql")).sort()) {
+    sqlite.exec(readFileSync(new URL(file, migrations), "utf8"));
+  }
   sqlite.exec("INSERT INTO user (id,name,email,created_at,updated_at) VALUES ('user-1','Test','test@example.invalid',0,0)");
   sqlite.exec("INSERT INTO feeds (id,user_id,title,url,feed_url) VALUES ('feed-1','user-1','Feed','https://example.invalid','https://example.invalid/rss')");
   const parameterCounts: number[] = [];

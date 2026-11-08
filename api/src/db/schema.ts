@@ -145,6 +145,10 @@ export const articles = sqliteTable(
     isRead: integer("is_read", { mode: "boolean" }).default(false),
     isStarred: integer("is_starred", { mode: "boolean" }).default(false),
     isReadLater: integer("is_read_later", { mode: "boolean" }).default(false),
+    readVersion: integer("read_version").notNull().default(0),
+    starVersion: integer("star_version").notNull().default(0),
+    laterVersion: integer("later_version").notNull().default(0),
+    progressVersion: integer("progress_version").notNull().default(0),
     isExtracted: integer("is_extracted", { mode: "boolean" }).default(false),
     extractedAt: text("extracted_at"),
     // 阅读进度相关字段

@@ -20,7 +20,7 @@ Note: the directory may be named `folio`, but the app/package/product name is `c
 ```text
 api/          Hono API, D1 schema/migrations, auth, feed sync, routes
 frontend/     Astro Web app, React islands, unified Worker entry/config
-mobile/       Flutter app
+mobile/       Native iPhone app (SwiftUI + SwiftData), Widget extension
 packages/     shared types/config packages
 .github/      CI and deploy workflows
 ```
@@ -30,7 +30,7 @@ packages/     shared types/config packages
 - Root: pnpm workspace, Node >= 22.13, pnpm >= 11.24
 - API: Hono, Cloudflare Workers, D1, KV, R2, Drizzle ORM, Better Auth, Vitest
 - Frontend: Astro 7, `@astrojs/cloudflare`, React 19, Tailwind CSS 4, Workers Static Assets
-- Mobile: Flutter 3 stable, Riverpod, go_router
+- Mobile: Swift 6.4, SwiftUI, SwiftData, WidgetKit; iPhone with iOS 26+, dark appearance
 
 ## Commands
 
@@ -70,10 +70,9 @@ pnpm --filter frontend deploy
 Mobile:
 
 ```bash
-cd mobile && flutter pub get
-cd mobile && flutter analyze
-cd mobile && flutter test
-cd mobile && flutter run
+xcodebuild -project mobile/Collect.xcodeproj -scheme Collect -sdk iphonesimulator CODE_SIGN_IDENTITY=- build
+# Use an installed iPhone simulator ID from xcrun simctl list devices available
+xcodebuild -project mobile/Collect.xcodeproj -scheme Collect -destination "platform=iOS Simulator,id=<ID>" CODE_SIGN_IDENTITY=- test
 ```
 
 ## Cloudflare Deployment
@@ -115,8 +114,12 @@ CI:
 ## Mobile Rules
 
 - Keep API models in sync with `packages/types` where applicable.
-- Run `flutter analyze` and focused widget/unit tests for mobile changes.
-- Pass API base URL via build-time config for release builds; do not hardcode local endpoints.
+- Use SwiftUI and Apple system frameworks, with Swift 6 strict concurrency. Keep code organized by feature.
+- Use Swift Testing for unit/integration tests and XCTest for UI tests. Build the app and Widget together.
+- UI is iPhone-only, iOS 26+, dark/OLED. No UIKit imports or external Swift packages.
+- Read `docs/ios-native-design.md` for offline, synchronization, and reader behavior.
+- Configure `COLLECT_API_URL` and `COLLECT_APP_GROUP` at build time. Real-device distribution also requires the team, bundle IDs, and App Group entitlement.
+- `mobile/project.yml` is the XcodeGen source. Regenerate and commit `Collect.xcodeproj` after target/file changes.
 
 ## Verification Matrix
 
@@ -126,7 +129,7 @@ Use the narrowest checks that cover your change:
 - D1 migration: `pnpm --filter api db:migrate:local`, plus a targeted API smoke test
 - Frontend UI/page: `pnpm --filter frontend type-check`, `pnpm --filter frontend build`, browser smoke test
 - Shared package: root `pnpm build` or the affected consumers
-- Mobile: `flutter analyze`, `flutter test`
+- Mobile: iOS simulator build, Swift Testing and XCTest, focused iPhone runtime verification
 
 Before PR handoff, report exactly which checks ran and which were skipped.
 

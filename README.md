@@ -8,7 +8,7 @@
 collect/
 ├── api/                    # Hono API、Auth、Drizzle schema 与业务服务
 ├── frontend/               # Astro 7、React Islands 与唯一 Worker 入口
-├── mobile/                 # 移动端（Flutter）
+├── mobile/                 # 原生 iPhone 应用（SwiftUI + SwiftData）
 ├── packages/
 │   ├── types/              # 共享 TypeScript 类型
 │   └── config/             # 共享配置（ESLint/TypeScript）
@@ -21,7 +21,7 @@ collect/
 
 - Node.js >= 22.13
 - pnpm >= 11.24（建议使用 Corepack）
-- Flutter >= 3.x（移动端开发）
+- Xcode 27.2、Swift 6.4（移动端开发）
 - Wrangler 使用仓库内锁定版本，无需全局安装
 
 ### 安装依赖
@@ -37,7 +37,7 @@ pnpm install
 pnpm dev:frontend
 
 # 启动移动端
-cd mobile && flutter run
+open mobile/Collect.xcodeproj
 ```
 
 ### 验证与部署
@@ -81,7 +81,7 @@ Cloudflare Worker: collect
 2. `collect-feed-sync`、`collect-feed-sync-dlq` 与 Worker secrets 已配置。
 3. Resend 使用仅限 `gomate.live` 的 Sending access key，发件人为 `Collect <digest@gomate.live>`。
 4. 部署授权由 Cloudflare Workers Builds 管理，运行时密钥保存在 Worker secrets 中。
-5. Flutter 发布时将 `API_BASE_URL` 设置为 `https://collect.jiahongw.com`。
+5. iOS 发布时将 `COLLECT_API_URL` 设置为 `https://collect.jiahongw.com`。
 
 2026-11-07 已补齐 Better Auth `account.issuer` 迁移，验证线上注册、登录、受保护 API 和退出流程，并退役旧前后端 Worker。全新环境需按顺序应用 D1 migrations 后再部署。
 
@@ -93,7 +93,7 @@ Cloudflare Worker: collect
 |---|---|
 | Worker 入口 | Hono + Astro Cloudflare adapter + Static Assets |
 | Web 前端 | Astro 7 + React Islands + Tailwind CSS v4 |
-| 移动端 | Flutter + Riverpod + go_router |
+| 移动端 | SwiftUI + SwiftData + WidgetKit |
 | 数据库 | Cloudflare D1 (SQLite) + Drizzle ORM |
 | 存储与异步 | Cloudflare KV + R2 + Queues |
 | 认证 | Better Auth |

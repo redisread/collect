@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import annotationsRoute from "./routes/annotations";
+import nativeRoute from "./routes/native";
 import articlesRoute from "./routes/articles";
 import authRoute from "./routes/auth";
 import feedsRoute from "./routes/feeds";
@@ -52,6 +53,7 @@ export function createApiApp() {
   app.get("/api/health", (c) => c.json({ status: "ok", service: "collect" }));
 
   app.route("/api/auth", authRoute);
+  app.route("/api/native", nativeRoute);
   app.route("/api/folders", foldersRoute);
   app.route("/api/feeds", feedsRoute);
   app.route("/api/articles", articlesRoute);

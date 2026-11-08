@@ -43,6 +43,13 @@
       "when": 1794118893788,
       "tag": "0005_merge_uncategorized_folders",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1794126129549,
+      "tag": "0006_native_article_versions",
+      "breakpoints": true
     }
   ]
 }

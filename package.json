@@ -2,7 +2,7 @@
   "name": "collect",
   "version": "0.1.0",
   "private": true,
-  "description": "Collect RSS Reader - A modern RSS reader built with Hono, Astro, and Flutter",
+  "description": "Collect RSS Reader - A modern RSS reader built with Hono, Astro, and SwiftUI",
   "scripts": {
     "dev": "turbo dev",
     "dev:api": "turbo dev --filter=api",
