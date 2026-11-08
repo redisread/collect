@@ -39,9 +39,15 @@ class ArticlesNotifier extends StateNotifier<ArticlesState> {
   ArticlesNotifier(this.ref) : super(const ArticlesState(isLoading: true));
 
   Future<Article> fetchArticle(String articleId) async {
+    final readVersion = _readVersion;
     final data = await ref.read(apiServiceProvider).getArticle(articleId);
-    final article = Article.fromJson(data['data'] as Map<String, dynamic>);
-    _updateArticle(articleId, isRead: article.isRead);
+    var article = Article.fromJson(data['data'] as Map<String, dynamic>);
+    final change = _readChanges[articleId];
+    if (change != null && change.version > readVersion) {
+      article = article.copyWith(isRead: change.isRead);
+    } else {
+      _updateArticle(articleId, isRead: article.isRead);
+    }
     ref.invalidate(feedsProvider);
     return article;
   }
@@ -79,6 +85,7 @@ class ArticlesNotifier extends StateNotifier<ArticlesState> {
     try {
       final api = ref.read(apiServiceProvider);
       await api.updateArticle(articleId, {'isRead': newReadStatus});
+      _updateArticle(articleId, isRead: newReadStatus);
       ref.invalidate(feedsProvider);
     } catch (e) {
       // 失败时回滚
@@ -196,11 +203,13 @@ class ArticlesNotifier extends StateNotifier<ArticlesState> {
 final articlesNotifierProvider =
     StateNotifierProvider<ArticlesNotifier, ArticlesState>((ref) {
   final notifier = ArticlesNotifier(ref);
-
-  // 监听选中的 feed 变化，自动刷新文章列表
-  final selectedFeedId = ref.watch(selectedFeedIdProvider);
-  final uncategorized = ref.watch(uncategorizedSelectedProvider);
-  notifier.loadArticles(feedId: selectedFeedId, uncategorized: uncategorized);
+  void reload() => notifier.loadArticles(
+        feedId: ref.read(selectedFeedIdProvider),
+        uncategorized: ref.read(uncategorizedSelectedProvider),
+      );
+  ref.listen(selectedFeedIdProvider, (previous, next) => reload());
+  ref.listen(uncategorizedSelectedProvider, (previous, next) => reload());
+  reload();
 
   return notifier;
 });

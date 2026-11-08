@@ -31,7 +31,51 @@ class DelayedApi extends FakeApi {
   Future<List<dynamic>> getArticles({String? feedId, bool uncategorized = false, bool? starred, bool? readLater, int page = 1}) => pending.future;
 }
 
+class PendingUpdateApi extends FakeApi {
+  final update = Completer<void>();
+  final list = Completer<List<dynamic>>();
+  bool delayList = false;
+  @override
+  Future<void> updateArticle(String id, Map<String, dynamic> updates) => update.future;
+  @override
+  Future<List<dynamic>> getArticles({String? feedId, bool uncategorized = false, bool? starred, bool? readLater, int page = 1}) =>
+      delayList ? list.future : super.getArticles(feedId: feedId, uncategorized: uncategorized, starred: starred, readLater: readLater, page: page);
+}
+
+class DelayedDetailApi extends FakeApi {
+  final detail = Completer<Map<String, dynamic>>();
+  @override
+  Future<Map<String, dynamic>> getArticle(String id) => detail.future;
+}
+
 void main() {
+  test('late detail response preserves a more recent read change', () async {
+    final api = DelayedDetailApi();
+    final container = ProviderContainer(overrides: [apiServiceProvider.overrideWithValue(api)]);
+    addTearDown(container.dispose);
+    final notifier = container.read(articlesNotifierProvider.notifier);
+    await Future<void>.delayed(Duration.zero);
+    final detail = notifier.fetchArticle('a');
+    await notifier.toggleRead('a');
+    api.detail.complete({'data': {'id': 'a', 'feedId': 'f', 'title': 'A', 'url': 'https://a.test', 'isRead': false}});
+    expect((await detail).isRead, isTrue);
+    expect(container.read(articlesNotifierProvider).articles.single.isRead, isTrue);
+  });
+  test('a list requested during a read update cannot restore the old state', () async {
+    final api = PendingUpdateApi();
+    final container = ProviderContainer(overrides: [apiServiceProvider.overrideWithValue(api)]);
+    addTearDown(container.dispose);
+    final notifier = container.read(articlesNotifierProvider.notifier);
+    await Future<void>.delayed(Duration.zero);
+    final update = notifier.toggleRead('a');
+    api.delayList = true;
+    final reload = notifier.loadArticles();
+    api.update.complete();
+    await update;
+    api.list.complete([{'id': 'a', 'feedId': 'f', 'title': 'A', 'url': 'https://a.test', 'isRead': false}]);
+    await reload;
+    expect(container.read(articlesNotifierProvider).articles.single.isRead, isTrue);
+  });
   test('late list response cannot overwrite a newer read state', () async {
     final api = DelayedApi();
     final container = ProviderContainer(overrides: [apiServiceProvider.overrideWithValue(api)]);
