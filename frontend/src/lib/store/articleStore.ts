@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { readTranslationLanguage } from "../settings";
 import type {
 	Article,
 	ArticleListItem,
@@ -53,6 +54,10 @@ interface ArticleStore {
 	isTranslating: boolean;
 	/** 当前选中的目标语言 */
 	targetLanguage: string;
+	displayedLanguages: Record<string, string>;
+	isLoadingPreference: boolean;
+	preferenceError: string | null;
+	loadTargetLanguage: () => Promise<string>;
 
 	// 提取相关状态
 	isExtracting: boolean;
@@ -99,6 +104,8 @@ let detailRequestId = 0;
 let translationRequestId = 0;
 let extractionRequestId = 0;
 let browserTranslationController: AbortController | null = null;
+let preferenceRequestId = 0;
+let preferenceRequest: Promise<string> | null = null;
 
 function buildArticleUrl(source: SelectedSource, page: number, sortOrder: string): string {
 	const params = new URLSearchParams({
@@ -136,6 +143,29 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 	translations: {},
 	isTranslating: false,
 	targetLanguage: "zh-CN",
+	displayedLanguages: {},
+	isLoadingPreference: false,
+	preferenceError: null,
+	loadTargetLanguage: () => {
+		if (preferenceRequest) return preferenceRequest;
+		const requestId = ++preferenceRequestId;
+		set({ isLoadingPreference: true, preferenceError: null });
+		preferenceRequest = readTranslationLanguage().then(language => {
+			if (requestId === preferenceRequestId) set({ targetLanguage: language });
+			return get().targetLanguage;
+		}).catch(() => {
+			if (requestId !== preferenceRequestId) return get().targetLanguage;
+			const message = "无法同步翻译语言，请检查网络后重试";
+			set({ preferenceError: message });
+			throw new Error(message);
+		}).finally(() => {
+			if (requestId === preferenceRequestId) {
+				preferenceRequest = null;
+				set({ isLoadingPreference: false });
+			}
+		});
+		return preferenceRequest;
+	},
 
 	// 搜索相关状态
 	searchQuery: "",
@@ -302,19 +332,28 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 	},
 
 	translateFullArticle: async () => {
-		const { selectedArticle, targetLanguage, isExtracting, isTranslating } = get();
-		if (!selectedArticle || isExtracting || isTranslating) return false;
+		const { selectedArticle, isExtracting, isTranslating, isLoadingPreference } = get();
+		if (!selectedArticle || isExtracting || isTranslating || isLoadingPreference) return false;
 		const requestId = detailRequestId;
+		let targetLanguage: string;
+		try { targetLanguage = await get().loadTargetLanguage(); } catch { return false; }
+		if (requestId !== detailRequestId) return false;
 		const content = selectedArticle.content || (await get().extractArticle(selectedArticle.id))?.content;
-		if (!content || requestId !== detailRequestId || get().targetLanguage !== targetLanguage) return false;
+		if (!content || requestId !== detailRequestId) return false;
 		return get().translateArticle(selectedArticle.id, content, targetLanguage);
 	},
 
 	translateArticle: async (articleId, content, targetLang) => {
-		const lang = targetLang || get().targetLanguage;
+		const detailId = detailRequestId;
+		let lang: string;
+		try { lang = targetLang || await get().loadTargetLanguage(); } catch { return false; }
+		if (detailId !== detailRequestId || get().selectedArticleId !== articleId) return false;
 		const key = `${articleId}:${lang}`;
 		if (get().translations[key]?.original === content) {
-			set({ translationError: null });
+			set(state => ({ translationError: null, translationFallback: null,
+				displayedLanguages: { ...state.displayedLanguages, [articleId]: lang },
+				translations: { ...state.translations, [key]: { ...state.translations[key] } },
+			}));
 			return true;
 		}
 		const requestId = ++translationRequestId;
@@ -332,7 +371,9 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 			}
 			if (!res.ok || !json.success) throw new Error(json.error || "翻译失败，请重试");
 			if (requestId !== translationRequestId || get().selectedArticleId !== articleId) return false;
-			set(state => ({ extractionError: null, translations: { ...state.translations, [key]: {
+			set(state => ({ extractionError: null,
+				displayedLanguages: { ...state.displayedLanguages, [articleId]: lang },
+				translations: { ...state.translations, [key]: {
 				...json.data, original: content,
 				translated: json.data.segments?.map(segment => segment.translated).join("\n\n") || "",
 			} } }));
@@ -346,8 +387,13 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 	},
 
 	translateInBrowser: async () => {
-		const pending = get().translationFallback;
-		if (!pending || get().isTranslating || get().selectedArticleId !== pending.articleId) return false;
+		const fallback = get().translationFallback;
+		if (!fallback || get().isTranslating || get().isLoadingPreference || get().selectedArticleId !== fallback.articleId) return false;
+		const detailId = detailRequestId;
+		let targetLang: string;
+		try { targetLang = await get().loadTargetLanguage(); } catch { return false; }
+		if (detailId !== detailRequestId) return false;
+		const pending = { ...fallback, targetLang };
 		const requestId = ++translationRequestId;
 		const controller = new AbortController();
 		browserTranslationController?.abort();
@@ -360,6 +406,7 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 			if (requestId !== translationRequestId || get().selectedArticleId !== pending.articleId) return false;
 			set(state => ({
 				translationFallback: null, extractionError: null,
+				displayedLanguages: { ...state.displayedLanguages, [pending.articleId]: pending.targetLang },
 				translations: { ...state.translations, [`${pending.articleId}:${pending.targetLang}`]: {
 					...result, original: pending.content,
 					translated: result.segments.map(segment => segment.translated).join("\n\n"),
@@ -395,9 +442,9 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 	},
 
 	setTargetLanguage: (lang) => {
-		browserTranslationController?.abort();
-		++translationRequestId;
-		set({ targetLanguage: lang, translationError: null, translationFallback: null, isTranslating: false });
+		++preferenceRequestId;
+		preferenceRequest = null;
+		set({ targetLanguage: lang, preferenceError: null, isLoadingPreference: false });
 	},
 
 	toggleRead: async (articleId) => {

@@ -56,6 +56,7 @@ export function SearchBox() {
 	// 键盘导航搜索结果
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
+			if (window.location.pathname.replace(/\/$/, "") === "/settings") return;
 			// 仅在搜索结果显示时处理
 			if (!showResults || searchResults.length === 0) return;
 

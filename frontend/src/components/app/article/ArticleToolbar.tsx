@@ -13,7 +13,7 @@ export function ArticleToolbar({ article, onOpenNotes }: ArticleToolbarProps) {
     toggleStarred, toggleReadLater, translateArticle, translateFullArticle, isTranslating,
     extractArticle, isExtracting, extractionError, translationError,
     translationFallback, translateInBrowser, translationMode,
-    targetLanguage, setTargetLanguage,
+    targetLanguage, isLoadingPreference, preferenceError,
   } = useArticleStore();
   const menuId = useId();
   const menu = useRef<HTMLDivElement>(null);
@@ -23,7 +23,8 @@ export function ArticleToolbar({ article, onOpenNotes }: ArticleToolbarProps) {
     window.addEventListener("resize", closeOnResize);
     return () => window.removeEventListener("resize", closeOnResize);
   }, []);
-  const busy = isExtracting || isTranslating;
+  const busy = isExtracting || isTranslating || isLoadingPreference;
+  const languageLabel = SUPPORTED_LANGUAGES.find(language => language.code === targetLanguage)?.label ?? targetLanguage;
   const buttonClass = "min-h-10 rounded-lg px-3 text-sm transition-colors duration-150 hover:bg-[var(--bg-card-hover)] disabled:opacity-50";
 
   function closeMenu() {
@@ -34,18 +35,10 @@ export function ArticleToolbar({ article, onOpenNotes }: ArticleToolbarProps) {
   return (
     <div className="shrink-0 border-b border-[var(--border-light)] bg-[var(--bg-main)] px-3 py-2">
       <div className="flex flex-wrap items-center gap-1.5">
-        <select
-          aria-label="翻译目标语言"
-          value={targetLanguage}
-          disabled={busy}
-          onChange={event => setTargetLanguage(event.target.value)}
-          className="min-h-10 min-w-28 max-w-36 flex-1 rounded-lg border border-[var(--border)] bg-[var(--bg-main)] px-2 text-sm"
-        >
-          {SUPPORTED_LANGUAGES.map(lang => <option key={lang.code} value={lang.code}>{lang.label}</option>)}
-        </select>
         <button onClick={() => void translateFullArticle()} disabled={busy}
+          title={`翻译为${languageLabel}，可在个人设置中修改`} aria-description={`目标语言为${languageLabel}`}
           className={buttonClass + " bg-[var(--accent-light)] text-[var(--accent)]"}>
-          {isExtracting ? "提取全文…" : isTranslating ? "翻译中…" : "翻译全文"}
+          {isLoadingPreference ? "同步设置…" : isExtracting ? "提取全文…" : isTranslating ? "翻译中…" : "翻译全文"}
         </button>
         <button aria-label={article.isStarred ? "取消收藏" : "收藏"} aria-pressed={article.isStarred}
           onClick={() => void toggleStarred(article.id)} className={buttonClass + " ml-auto"}>
@@ -87,16 +80,16 @@ export function ArticleToolbar({ article, onOpenNotes }: ArticleToolbarProps) {
           className={buttonClass + " flex items-center"} onClick={closeMenu}>打开原文 ↗</a>
       </div>
       {busy && <p role="status" className="mt-2 text-xs text-[var(--text-secondary)]">
-        {isExtracting ? "正在获取完整文章…" : translationMode === "browser" ? "正在通过浏览器连接 Google 翻译…" : "正在翻译，请稍候…"}
+        {isLoadingPreference ? "正在同步翻译语言…" : isExtracting ? "正在获取完整文章…" : translationMode === "browser" ? "正在通过浏览器连接 Google 翻译…" : "正在翻译，请稍候…"}
       </p>}
-      {(translationError || extractionError) && <div role="alert" className="mt-2 text-sm text-[var(--text-secondary)]">
-        <p>{translationError || extractionError}</p>
+      {(preferenceError || translationError || extractionError) && <div role="alert" className="mt-2 text-sm text-[var(--text-secondary)]">
+        <p>{preferenceError || translationError || extractionError}</p>
         {translationFallback && <button disabled={busy}
           className={buttonClass + " mt-2 bg-[var(--accent-light)] text-[var(--accent)]"}
           onClick={() => void translateInBrowser()}>通过浏览器重试</button>}
         {extractionError && article.summary && !article.content && <button
           disabled={busy} className={buttonClass + " mt-1 underline underline-offset-4"}
-          onClick={() => void translateArticle(article.id, "<p>" + escapeHtml(article.summary!) + "</p>", targetLanguage)}>
+          onClick={() => void translateArticle(article.id, "<p>" + escapeHtml(article.summary!) + "</p>")}>
           仅翻译摘要
         </button>}
       </div>}

@@ -5,6 +5,7 @@ import { sanitizeHtml } from "../lib/utils/sanitize";
 import type { Article, FeedWithUnreadCount, Folder } from "../lib/types";
 
 const response = (data: unknown) => Response.json({ success: true, data });
+vi.mock("../lib/settings", () => ({ readTranslationLanguage: vi.fn().mockResolvedValue("zh-CN") }));
 const article = (id: string) => ({ id, title: id, content: "<p>Hello</p>" } as Article);
 beforeEach(async () => {
   await useArticleStore.getState().selectArticle(null);

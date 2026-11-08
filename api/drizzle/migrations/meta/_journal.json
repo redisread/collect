@@ -15,6 +15,13 @@
       "when": 1794054672076,
       "tag": "0001_account_issuer",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1794102054641,
+      "tag": "0002_lucky_magdalene",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,5 @@
 import { authClient, signOut } from "@/lib/auth-client";
+import { navigateWithinReader } from "@/lib/navigation";
 
 export function UserMenu() {
 	const { data: session } = authClient.useSession();
@@ -13,6 +14,7 @@ export function UserMenu() {
 			<span className="text-xs text-[var(--text-tertiary)] truncate flex-1">
 				{session?.user?.email ?? ""}
 			</span>
+			<a href="/settings" onClick={navigateWithinReader} className="min-h-11 flex items-center shrink-0 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]">个人设置</a>
 			<button
 				onClick={handleSignOut}
 				title="退出登录"

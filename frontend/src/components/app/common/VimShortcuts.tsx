@@ -114,6 +114,7 @@ export function VimShortcuts({ contentRef }: VimShortcutsProps) {
 
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
+			if (window.location.pathname.replace(/\/$/, "") === "/settings") return;
 			// 忽略输入框中的按键
 			const target = e.target as HTMLElement;
 			if (

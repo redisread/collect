@@ -27,6 +27,9 @@ it("keeps the annotation toolbar available for the original text in bilingual vi
     },
   } }));
   expect(container.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe("双语");
+  await act(async () => useArticleStore.getState().setTargetLanguage("ja"));
+  expect(container.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe("双语");
+  expect(container.querySelector(".translation-text")?.textContent).toBe("你好");
   const paragraph = container.querySelector(".article-content p")!;
   const range = document.createRange();
   range.setStart(paragraph.firstChild!, 0);
