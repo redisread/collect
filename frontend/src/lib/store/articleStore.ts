@@ -123,6 +123,10 @@ let preferenceRequestId = 0;
 let preferenceRequest: Promise<string> | null = null;
 let aiTranslationController: AbortController | null = null;
 
+export function isSavedGroup(source: SelectedSource): boolean {
+  return source.type === "starred" || source.type === "read_later";
+}
+
 function buildArticleUrl(source: SelectedSource, page: number, sortOrder: string, includeId?: string | null): string {
 	const params = new URLSearchParams({
 		page: String(page),
@@ -136,7 +140,7 @@ function buildArticleUrl(source: SelectedSource, page: number, sortOrder: string
 	else if (source.type === "starred") params.set("filter", "starred");
 	else if (source.type === "read_later") params.set("filter", "read_later");
 
-	if (useUiStore.getState().hideRead && source.type !== "starred" && source.type !== "read_later") {
+	if (useUiStore.getState().hideRead && !isSavedGroup(source)) {
     params.set("hideRead", "true");
     if (includeId) params.set("includeId", includeId);
   }
@@ -370,7 +374,7 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 
 	navigateArticle: async (direction) => {
 		const { selectedArticleId } = get();
-		const articles = get().articles.filter(article => !useUiStore.getState().hideRead || !article.isRead || article.id === selectedArticleId);
+		const articles = get().articles.filter(article => isSavedGroup(useFeedStore.getState().selectedSource) || !useUiStore.getState().hideRead || !article.isRead || article.id === selectedArticleId);
 		if (articles.length === 0) return;
 
 		const currentIndex = articles.findIndex((a) => a.id === selectedArticleId);

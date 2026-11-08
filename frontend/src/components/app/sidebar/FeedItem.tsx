@@ -1,5 +1,5 @@
 import { useUiStore } from "@/lib/store/uiStore";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useFeedStore } from "@/lib/store/feedStore";
 import { useArticleStore } from "@/lib/store/articleStore";
 import { ContextMenu, type ContextMenuItem } from "../common/ContextMenu";
@@ -18,7 +18,18 @@ export function FeedItem({ feed, isSelected }: FeedItemProps) {
 	const setFeedToMoveId = useUiStore(state => state.setFeedToMoveId);
 	const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const openedByHold = useRef(false);
+  const holdStart = useRef({ x: 0, y: 0 });
+  const suppressClickUntil = useRef(0);
+  const cancelHold = () => {
+    if (holdTimer.current !== null) clearTimeout(holdTimer.current);
+    holdTimer.current = null;
+  };
+  useEffect(() => cancelHold, []);
+
 	const handleClick = () => {
+    if (performance.now() < suppressClickUntil.current) return;
 		const source = { type: "feed" as const, feedId: feed.id };
 		setSelectedSource(source);
 		fetchArticles(source);
@@ -66,6 +77,27 @@ export function FeedItem({ feed, isSelected }: FeedItemProps) {
 				title={feed.title}
 				onClick={handleClick}
 				onContextMenu={handleContextMenu}
+        onPointerDown={event => {
+          if (event.pointerType !== "touch") return;
+          cancelHold();
+          openedByHold.current = false;
+          const { clientX: x, clientY: y } = event;
+          holdStart.current = { x, y };
+          holdTimer.current = setTimeout(() => {
+            openedByHold.current = true;
+            suppressClickUntil.current = performance.now() + 800;
+            setContextMenu({ x, y });
+          }, 450);
+        }}
+        onPointerMove={event => {
+          if (Math.hypot(event.clientX - holdStart.current.x, event.clientY - holdStart.current.y) > 10) cancelHold();
+        }}
+        onPointerUp={() => {
+          cancelHold();
+          if (openedByHold.current) suppressClickUntil.current = performance.now() + 800;
+          openedByHold.current = false;
+        }}
+        onPointerCancel={cancelHold}
         onKeyDown={event => {
           if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
             event.preventDefault(); const rect = event.currentTarget.getBoundingClientRect(); setContextMenu({ x: rect.left, y: rect.bottom });

@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { useArticleStore } from "../lib/store/articleStore";
+import { useFeedStore } from "../lib/store/feedStore";
 import { useUiStore } from "../lib/store/uiStore";
 import type { Article } from "../lib/types";
 
@@ -68,4 +69,15 @@ it("uses the server batch action names and preserves state on a rejected batch",
   expect(useArticleStore.getState().articles[0].isStarred).toBe(false);
   expect(useArticleStore.getState().pendingArticleIds).toEqual([]);
   expect(useArticleStore.getState().articleActionError).toContain("批量操作失败");
+});
+
+it.each(["starred", "read_later"] as const)("navigates visible read articles in %s", async type => {
+  const articles = [{id:"a",isRead:true}, {id:"b",isRead:true}] as Article[];
+  useUiStore.setState({ hideRead: true });
+  useFeedStore.setState({ selectedSource: { type } });
+  useArticleStore.setState({ articles, selectedArticleId: "a" });
+  const select = vi.spyOn(useArticleStore.getState(), "selectArticle").mockResolvedValue();
+  await useArticleStore.getState().navigateArticle("next");
+  expect(select).toHaveBeenCalledWith("b");
+  select.mockRestore();
 });

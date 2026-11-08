@@ -1,7 +1,7 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useUiStore } from "@/lib/store/uiStore";
 import { useEffect, useRef, useCallback } from "react";
-import { useArticleStore } from "@/lib/store/articleStore";
+import { isSavedGroup, useArticleStore } from "@/lib/store/articleStore";
 import { useFeedStore } from "@/lib/store/feedStore";
 import { ArticleCard } from "../article/ArticleCard";
 import { ArticleCardSkeleton } from "../article/ArticleSkeleton";
@@ -14,7 +14,7 @@ export function ArticleList() {
 	const { selectedSource } = useFeedStore();
   const { hideRead, setHideRead } = useUiStore();
   const { selectedArticleId, isLoadingDetail, articleActionError } = useArticleStore();
-  const savedGroup = selectedSource.type === "starred" || selectedSource.type === "read_later";
+  const savedGroup = isSavedGroup(selectedSource);
   const visibleArticles = articles.filter(article => savedGroup || !hideRead || !article.isRead || article.id === selectedArticleId);
 	const bottomRef = useRef<HTMLDivElement>(null);
 
