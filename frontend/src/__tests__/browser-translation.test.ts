@@ -4,6 +4,7 @@ import { translateInBrowser } from "../lib/translate-browser";
 
 vi.mock("../lib/translate-browser", () => ({ translateInBrowser: vi.fn() }));
 vi.mock("../lib/settings", () => ({ readTranslationLanguage: vi.fn().mockResolvedValue("zh-CN") }));
+vi.mock("../lib/store/aiSettingsStore", () => ({ useAiSettingsStore: { getState: () => ({ load: async () => {}, profiles: [], activeProfileId: null }) } }));
 const result = {
   translatedHtml: "<p>你好</p>", bilingualHtml: "<p>Hello<span>你好</span></p>",
   segments: [{ original: "Hello", translated: "你好" }], detectedLang: "en", targetLang: "zh-CN", timestamp: 1,

@@ -6,6 +6,7 @@ import type { Article, FeedWithUnreadCount, Folder } from "../lib/types";
 
 const response = (data: unknown) => Response.json({ success: true, data });
 vi.mock("../lib/settings", () => ({ readTranslationLanguage: vi.fn().mockResolvedValue("zh-CN") }));
+vi.mock("../lib/store/aiSettingsStore", () => ({ useAiSettingsStore: { getState: () => ({ load: async () => {}, profiles: [], activeProfileId: null }) } }));
 const article = (id: string) => ({ id, title: id, content: "<p>Hello</p>" } as Article);
 beforeEach(async () => {
   await useArticleStore.getState().selectArticle(null);

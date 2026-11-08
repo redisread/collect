@@ -52,6 +52,7 @@ describe("POST /api/refresh", () => {
       {
         ASSETS: {} as Fetcher,
         BETTER_AUTH_SECRET: "test-secret",
+        AI_KEYS_ENCRYPTION_SECRET: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
         COLLECT_KV: {} as KVNamespace,
         COLLECT_R2: {} as R2Bucket,
         DB: {} as D1Database,

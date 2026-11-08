@@ -4,6 +4,7 @@ import { readTranslationLanguage } from "../lib/settings";
 import type { Article } from "../lib/types";
 
 vi.mock("../lib/settings", () => ({ readTranslationLanguage: vi.fn() }));
+vi.mock("../lib/store/aiSettingsStore", () => ({ useAiSettingsStore: { getState: () => ({ load: async () => {}, profiles: [], activeProfileId: null }) } }));
 beforeEach(async () => {
   await useArticleStore.getState().selectArticle(null);
   useArticleStore.getState().setTargetLanguage("zh-CN");

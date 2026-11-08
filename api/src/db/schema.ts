@@ -301,6 +301,7 @@ export const userPreferences = sqliteTable(
     showImages: integer("show_images", { mode: "boolean" }).default(true),
     autoMarkAsRead: integer("auto_mark_as_read", { mode: "boolean" }).default(false),
     translationTargetLanguage: text("translation_target_language").notNull().default("zh-CN"),
+    translationProviderId: text("translation_provider_id"),
     createdAt: text("created_at").default(sql`(datetime('now'))`),
     updatedAt: text("updated_at").default(sql`(datetime('now'))`),
   },
@@ -308,6 +309,34 @@ export const userPreferences = sqliteTable(
     uniqueIndex("idx_user_prefs_user_id").on(table.userId),
   ]
 );
+
+export const aiProfiles = sqliteTable("ai_profiles", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  kind: text("kind").notNull(),
+  baseUrl: text("base_url").notNull(),
+  model: text("model").notNull(),
+  encryptedKey: text("encrypted_key").notNull(),
+  revision: text("revision").notNull(),
+  updatedAt: text("updated_at").notNull(),
+}, table => [index("idx_ai_profiles_user").on(table.userId)]);
+
+export const aiTranslationJobs = sqliteTable("ai_translation_jobs", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  articleId: text("article_id").notNull().references(() => articles.id, { onDelete: "cascade" }),
+  profileId: text("profile_id").notNull().references(() => aiProfiles.id, { onDelete: "cascade" }),
+  revision: text("revision").notNull(),
+  targetLang: text("target_lang").notNull(),
+  contentHash: text("content_hash").notNull(),
+  plan: text("plan").notNull(),
+  results: text("results").notNull().default("[]"),
+  completed: integer("completed").notNull().default(0),
+  leaseToken: text("lease_token"),
+  leaseUntil: integer("lease_until").notNull().default(0),
+  updatedAt: text("updated_at").notNull(),
+}, table => [index("idx_ai_translation_jobs_user_article").on(table.userId, table.articleId)]);
 
 // RSS 抓取任务队列表
 export const fetchQueue = sqliteTable(

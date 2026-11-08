@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { navigateWithinReader } from "@/lib/navigation";
 import { saveTranslationLanguage } from "@/lib/settings";
 import { SUPPORTED_LANGUAGES, useArticleStore } from "@/lib/store/articleStore";
+import { AiTranslationSettings } from "./AiTranslationSettings";
 
 export function PersonalSettings() {
   const [language, setLanguage] = useState("");
@@ -70,6 +71,7 @@ export function PersonalSettings() {
           {!savedLanguage && <button type="button" onClick={() => void load()} className="mt-2 min-h-11 underline underline-offset-4">重新加载</button>}
         </div>}
       </form>
+      <AiTranslationSettings />
     </div>
   </main>;
 }

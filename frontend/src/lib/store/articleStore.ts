@@ -1,5 +1,8 @@
 import { create } from "zustand";
 import { readTranslationLanguage } from "../settings";
+import { useAiSettingsStore, type AiProfile } from "./aiSettingsStore";
+import { aiCacheKey, continueAiTranslation, loadAiProgress, type AiProgress } from "../ai-translation";
+import { escapeHtml } from "../utils/sanitize";
 import type {
 	Article,
 	ArticleListItem,
@@ -42,7 +45,7 @@ interface ArticleStore {
 	detailError: string | null;
 	translationError: string | null;
 	translationFallback: { articleId: string; content: string; targetLang: string } | null;
-	translationMode: "server" | "browser";
+	translationMode: "server" | "browser" | "ai";
 	extractionError: string | null;
 	total: number;
 	page: number;
@@ -55,6 +58,11 @@ interface ArticleStore {
 	/** 当前选中的目标语言 */
 	targetLanguage: string;
 	displayedLanguages: Record<string, string>;
+	displayedKeys: Record<string, string>;
+	translationViewRequest: number;
+	aiProgress: AiProgress | null;
+	restoreAiTranslation: () => Promise<void>;
+	pauseTranslation: () => void;
 	isLoadingPreference: boolean;
 	preferenceError: string | null;
 	loadTargetLanguage: () => Promise<string>;
@@ -80,8 +88,9 @@ interface ArticleStore {
 	toggleReadLater: (articleId: string) => Promise<void>;
 	setSortOrder: (sortOrder: "desc" | "asc") => void;
 	navigateArticle: (direction: "next" | "prev") => Promise<void>;
-	translateArticle: (articleId: string, content: string, targetLang?: string) => Promise<boolean>;
+	translateArticle: (articleId: string, content: string, targetLang?: string, profile?: AiProfile | null) => Promise<boolean>;
 	translateFullArticle: () => Promise<boolean>;
+	continueTranslation: () => Promise<boolean>;
 	translateInBrowser: () => Promise<boolean>;
 	clearTranslation: (articleId: string) => void;
 	setTargetLanguage: (lang: string) => void;
@@ -106,6 +115,7 @@ let extractionRequestId = 0;
 let browserTranslationController: AbortController | null = null;
 let preferenceRequestId = 0;
 let preferenceRequest: Promise<string> | null = null;
+let aiTranslationController: AbortController | null = null;
 
 function buildArticleUrl(source: SelectedSource, page: number, sortOrder: string): string {
 	const params = new URLSearchParams({
@@ -144,13 +154,16 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 	isTranslating: false,
 	targetLanguage: "zh-CN",
 	displayedLanguages: {},
+	displayedKeys: {},
+	translationViewRequest: 0,
+	aiProgress: null,
 	isLoadingPreference: false,
 	preferenceError: null,
 	loadTargetLanguage: () => {
 		if (preferenceRequest) return preferenceRequest;
 		const requestId = ++preferenceRequestId;
 		set({ isLoadingPreference: true, preferenceError: null });
-		preferenceRequest = readTranslationLanguage().then(language => {
+		preferenceRequest = Promise.all([readTranslationLanguage(), useAiSettingsStore.getState().load()]).then(([language]) => {
 			if (requestId === preferenceRequestId) set({ targetLanguage: language });
 			return get().targetLanguage;
 		}).catch(() => {
@@ -165,6 +178,34 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 			}
 		});
 		return preferenceRequest;
+	},
+	pauseTranslation: () => {
+		aiTranslationController?.abort();
+		set({ isTranslating: false });
+	},
+	restoreAiTranslation: async () => {
+		const { selectedArticle } = get();
+		if (!selectedArticle || get().isTranslating) return;
+		const content = selectedArticle.content || (selectedArticle.summary ? `<p>${escapeHtml(selectedArticle.summary)}</p>` : "");
+		if (!content) return;
+		const detailId = detailRequestId;
+		const translationId = translationRequestId;
+		try {
+			const lang = await get().loadTargetLanguage();
+			const { profiles, activeProfileId } = useAiSettingsStore.getState();
+			const profile = profiles.find(item => item.id === activeProfileId);
+			if (!profile || detailId !== detailRequestId) return;
+			const progress = await loadAiProgress(selectedArticle.id, content, lang, profile, true);
+			if (!progress || detailId !== detailRequestId || translationId !== translationRequestId ||
+				get().selectedArticleId !== selectedArticle.id || get().isTranslating ||
+				useAiSettingsStore.getState().activeProfileId !== profile.id) return;
+			const key = aiCacheKey(selectedArticle.id, lang, profile);
+			set(state => ({ aiProgress: progress, translationMode: "ai",
+				displayedLanguages: { ...state.displayedLanguages, [selectedArticle.id]: lang },
+				displayedKeys: { ...state.displayedKeys, [selectedArticle.id]: key },
+				translations: { ...state.translations, [key]: { ...progress, original: content, translated: progress.segments?.map(segment => segment.translated).join("\n\n") ?? "" } },
+			}));
+		} catch { /* Translation remains available for an explicit retry. */ }
 	},
 
 	// 搜索相关状态
@@ -232,12 +273,13 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 
 	selectArticle: async (articleId) => {
 		browserTranslationController?.abort();
+		aiTranslationController?.abort();
 		const requestId = ++detailRequestId;
 		++translationRequestId;
 		++extractionRequestId;
 		set({ selectedArticleId: articleId, selectedArticle: null, isLoadingDetail: !!articleId,
 			detailError: null, translationError: null, translationFallback: null, extractionError: null,
-			isTranslating: false, isExtracting: false, annotations: [] });
+			isTranslating: false, aiProgress: null, isExtracting: false, annotations: [] });
 		if (!articleId) return;
 		try {
 			const res = await fetch(`${API_BASE}/api/articles/${articleId}`, {
@@ -248,6 +290,7 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 			if (requestId === detailRequestId && get().selectedArticleId === articleId) {
 				set(state => ({ selectedArticle: json.data,
 					articles: state.articles.map(article => article.id === articleId ? { ...article, isRead: true } : article) }));
+				void get().restoreAiTranslation();
 			}
 		} catch {
 			if (requestId === detailRequestId && get().selectedArticleId === articleId) set({ detailError: "文章加载失败，请重试" });
@@ -338,26 +381,72 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 		let targetLanguage: string;
 		try { targetLanguage = await get().loadTargetLanguage(); } catch { return false; }
 		if (requestId !== detailRequestId) return false;
+		const { profiles, activeProfileId } = useAiSettingsStore.getState();
+		const profile = profiles.find(item => item.id === activeProfileId) ?? null;
 		const content = selectedArticle.content || (await get().extractArticle(selectedArticle.id))?.content;
 		if (!content || requestId !== detailRequestId) return false;
-		return get().translateArticle(selectedArticle.id, content, targetLanguage);
+		return get().translateArticle(selectedArticle.id, content, targetLanguage, profile);
+	},
+	continueTranslation: async () => {
+		const { selectedArticleId, displayedKeys, translations, isTranslating, isLoadingPreference } = get();
+		if (!selectedArticleId || isTranslating || isLoadingPreference) return false;
+		const content = translations[displayedKeys[selectedArticleId]]?.original;
+		if (!content) return false;
+		return get().translateArticle(selectedArticleId, content);
 	},
 
-	translateArticle: async (articleId, content, targetLang) => {
+	translateArticle: async (articleId, content, targetLang, profileOverride) => {
 		const detailId = detailRequestId;
 		let lang: string;
 		try { lang = targetLang || await get().loadTargetLanguage(); } catch { return false; }
 		if (detailId !== detailRequestId || get().selectedArticleId !== articleId) return false;
+		const { profiles, activeProfileId } = useAiSettingsStore.getState();
+		const profile = profileOverride === undefined ? profiles.find(item => item.id === activeProfileId) : profileOverride;
+		if (profile) {
+			const requestId = ++translationRequestId;
+			aiTranslationController?.abort();
+			const controller = new AbortController();
+			aiTranslationController = controller;
+			const key = aiCacheKey(articleId, lang, profile);
+			let shown = false;
+			const applyProgress = (progress: AiProgress) => {
+				if (requestId !== translationRequestId || detailId !== detailRequestId || get().selectedArticleId !== articleId) controller.abort();
+				if (controller.signal.aborted) return;
+				set(state => ({ aiProgress: progress,
+					translationViewRequest: state.translationViewRequest + (!shown && progress.completed > 0 ? 1 : 0),
+					displayedLanguages: { ...state.displayedLanguages, [articleId]: lang },
+					displayedKeys: { ...state.displayedKeys, [articleId]: key },
+					translations: { ...state.translations, [key]: { ...progress, original: content,
+						translated: progress.segments?.map(segment => segment.translated).join("\n\n") ?? "" } },
+				}));
+				shown ||= progress.completed > 0;
+			};
+			set({ isTranslating: true, aiProgress: null, translationError: null, translationFallback: null, translationMode: "ai" });
+			try {
+				const progress = await loadAiProgress(articleId, content, lang, profile, false);
+				if (!progress || controller.signal.aborted || detailId !== detailRequestId) return false;
+				applyProgress(progress);
+				return await continueAiTranslation(progress, applyProgress, controller.signal);
+			} catch (error) {
+				if (requestId === translationRequestId && !controller.signal.aborted) set({ translationError: error instanceof Error ? error.message : "AI 翻译失败，请继续重试" });
+				return false;
+			} finally {
+				if (requestId === translationRequestId) set({ isTranslating: false });
+			}
+		}
 		const key = `${articleId}:${lang}`;
 		if (get().translations[key]?.original === content) {
 			set(state => ({ translationError: null, translationFallback: null,
+				translationViewRequest: state.translationViewRequest + 1,
+				aiProgress: null,
+				displayedKeys: { ...state.displayedKeys, [articleId]: key },
 				displayedLanguages: { ...state.displayedLanguages, [articleId]: lang },
 				translations: { ...state.translations, [key]: { ...state.translations[key] } },
 			}));
 			return true;
 		}
 		const requestId = ++translationRequestId;
-		set({ isTranslating: true, translationError: null, translationFallback: null, translationMode: "server" });
+		set({ isTranslating: true, aiProgress: null, translationError: null, translationFallback: null, translationMode: "server" });
 		try {
 			const res = await fetch(`${API_BASE}/api/translate`, {
 				method: "POST", headers: { "Content-Type": "application/json" },
@@ -372,6 +461,8 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 			if (!res.ok || !json.success) throw new Error(json.error || "翻译失败，请重试");
 			if (requestId !== translationRequestId || get().selectedArticleId !== articleId) return false;
 			set(state => ({ extractionError: null,
+				translationViewRequest: state.translationViewRequest + 1,
+				displayedKeys: { ...state.displayedKeys, [articleId]: key },
 				displayedLanguages: { ...state.displayedLanguages, [articleId]: lang },
 				translations: { ...state.translations, [key]: {
 				...json.data, original: content,
@@ -393,6 +484,7 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 		let targetLang: string;
 		try { targetLang = await get().loadTargetLanguage(); } catch { return false; }
 		if (detailId !== detailRequestId) return false;
+		if (useAiSettingsStore.getState().activeProfileId) return get().translateArticle(fallback.articleId, fallback.content, targetLang);
 		const pending = { ...fallback, targetLang };
 		const requestId = ++translationRequestId;
 		const controller = new AbortController();
@@ -406,6 +498,8 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 			if (requestId !== translationRequestId || get().selectedArticleId !== pending.articleId) return false;
 			set(state => ({
 				translationFallback: null, extractionError: null,
+				translationViewRequest: state.translationViewRequest + 1,
+				displayedKeys: { ...state.displayedKeys, [pending.articleId]: `${pending.articleId}:${pending.targetLang}` },
 				displayedLanguages: { ...state.displayedLanguages, [pending.articleId]: pending.targetLang },
 				translations: { ...state.translations, [`${pending.articleId}:${pending.targetLang}`]: {
 					...result, original: pending.content,

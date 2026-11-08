@@ -25,7 +25,7 @@
     "FRONTEND_URL": "https://collect.jiahongw.com"
   },
   "secrets": {
-    "required": ["BETTER_AUTH_SECRET", "RESEND_API_KEY"]
+    "required": ["BETTER_AUTH_SECRET", "RESEND_API_KEY", "AI_KEYS_ENCRYPTION_SECRET"]
   },
   "triggers": {
     "crons": ["*/5 * * * *", "0 * * * *"]
