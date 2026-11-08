@@ -14,7 +14,7 @@ export function UserMenu() {
   return <div className="shrink-0 border-t border-[var(--border-light)] p-2">
     <button ref={trigger} popoverTarget={id} aria-haspopup="dialog"
       className={linkClass + " gap-2"}>
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--accent-light)] text-[var(--accent)]" aria-hidden="true">{name.slice(0, 1)}</span>
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--accent-light)] text-[var(--accent)]" aria-hidden="true">{session?.user?.image ? <img src={session.user.image} alt="" className="h-8 w-8 rounded-full object-cover" /> : name.slice(0, 1)}</span>
       <span className="min-w-0 flex-1 truncate" title={name}>{name}</span>
       <span aria-hidden="true">⌃</span>
     </button>

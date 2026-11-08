@@ -30,6 +30,9 @@ export function FeedItem({ feed, isSelected }: FeedItemProps) {
 	};
 
 	const menuItems: ContextMenuItem[] = [
+    { label: "移动到文件夹", onClick: () => { useFeedStore.setState({ moveStatus: null }); setFeedToMoveId(feed.id); } },
+    { label: "全部标为已读", onClick: () => { void useFeedStore.getState().markFeedRead(feed.id); } },
+    { label: feed.autoExtract ? "关闭自动全文提取" : "开启自动全文提取", onClick: () => { void useFeedStore.getState().setAutoExtract(feed.id, !feed.autoExtract); } },
 		{
 			label: "刷新",
 			icon: "↻",
@@ -54,6 +57,7 @@ export function FeedItem({ feed, isSelected }: FeedItemProps) {
 		<>
 			<div className="flex min-w-0 items-center gap-1">
 			<button
+				data-move-feed={feed.id}
 				draggable={!movingFeedId}
 				onDragStart={event => {
 					event.dataTransfer.setData(FEED_DRAG_TYPE, feed.id);
@@ -62,6 +66,11 @@ export function FeedItem({ feed, isSelected }: FeedItemProps) {
 				title={feed.title}
 				onClick={handleClick}
 				onContextMenu={handleContextMenu}
+        onKeyDown={event => {
+          if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+            event.preventDefault(); const rect = event.currentTarget.getBoundingClientRect(); setContextMenu({ x: rect.left, y: rect.bottom });
+          }
+        }}
 				className={cn(
 					"min-w-0 flex-1 flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm cursor-grab active:cursor-grabbing",
 					"transition-colors duration-150",
@@ -104,10 +113,6 @@ export function FeedItem({ feed, isSelected }: FeedItemProps) {
 						{feed.unreadCount}
 					</span>
 				)}
-			</button>
-			<button type="button" aria-label={`移动 ${feed.title} 到文件夹`} title="移动到文件夹"
-				data-move-feed={feed.id} onClick={() => { useFeedStore.setState({ moveStatus: null }); setFeedToMoveId(feed.id); }} className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]">
-				<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M3 7V5h6l2 2h10v12H3V7Zm5 6h8m-3-3 3 3-3 3" /></svg>
 			</button>
 			</div>
 

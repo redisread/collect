@@ -82,6 +82,9 @@ export function AiTranslationSettings() {
         </div>)}
       </div>
       <button disabled={busy} onClick={() => edit()} className={buttonClass + " mt-4 border border-[var(--border)]"}>添加 AI 配置</button>
+      <button disabled={busy} className={buttonClass + " mt-4 ml-2 border border-[var(--border)]"} onClick={() => {
+        setEditing(null); setForm({ name: "智谱 GLM", kind: "openai-compatible", baseUrl: "https://open.bigmodel.cn/api/paas/v4", model: "glm-5.3", apiKey: "" }); setShowForm(true); setError(""); setNotice("");
+      }}>GLM 快速配置</button>
       <p className="mt-3 text-xs leading-5 text-[var(--text-tertiary)]">测试连接会发送一小段示例文字，消耗少量 API 额度。</p>
     </>}
     {showForm && <form onSubmit={event => { event.preventDefault(); void save(!editing); }} className="mt-6 space-y-4 rounded-xl border border-[var(--border)] p-4 sm:p-5">

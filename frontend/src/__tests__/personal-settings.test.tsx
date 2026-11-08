@@ -6,6 +6,8 @@ import { readTranslationLanguage, saveTranslationLanguage } from "../lib/setting
 import { useArticleStore } from "../lib/store/articleStore";
 
 vi.mock("../lib/settings", () => ({ readTranslationLanguage: vi.fn(), saveTranslationLanguage: vi.fn() }));
+vi.mock("../components/app/ProfileSettings", () => ({ ProfileSettings: () => null }));
+vi.mock("../components/app/RetentionSettings", () => ({ RetentionSettings: () => null }));
 vi.mock("../components/app/AiTranslationSettings", () => ({ AiTranslationSettings: () => null }));
 vi.mock("../components/app/OpmlImportSettings", () => ({ OpmlImportSettings: () => null }));
 vi.mock("../lib/store/aiSettingsStore", () => ({ useAiSettingsStore: { getState: () => ({ load: async () => {}, profiles: [], activeProfileId: null }) } }));
@@ -20,6 +22,7 @@ it("loads the account preference, preserves failed edits, and confirms a success
   document.body.appendChild(container);
   const root = createRoot(container);
   await act(async () => root.render(<PersonalSettings />));
+  await act(async () => { Array.from(container.querySelectorAll("nav button")).find(button => button.textContent === "AI 翻译")!.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
   const select = container.querySelector("select")!;
   expect(select.value).toBe("fr");
   await act(async () => {

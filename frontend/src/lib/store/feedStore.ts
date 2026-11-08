@@ -38,10 +38,28 @@ interface FeedStore {
 	addFolder: (name: string, color?: string) => Promise<void>;
 	deleteFolder: (folderId: string) => Promise<void>;
 	renameFolder: (folderId: string, name: string) => Promise<void>;
+	markFeedRead: (feedId: string) => Promise<void>;
+	setAutoExtract: (feedId: string, enabled: boolean) => Promise<void>;
 	refresh: (feedId?: string) => Promise<void>;
 }
 
 export const useFeedStore = create<FeedStore>((set, get) => ({
+  markFeedRead: async (feedId) => {
+    useArticleStore.setState({ articleActionError: null });
+    try {
+      const response = await fetch(`/api/feeds/${feedId}/mark-all-read`, { method: "POST", credentials: "include" });
+      if (!response.ok) throw new Error("标记已读失败，请重试");
+      await get().fetchFeeds();
+      await useArticleStore.getState().fetchArticles(get().selectedSource, false);
+    } catch { useArticleStore.setState({ articleActionError: "标记已读失败，请重试" }); }
+  },
+  setAutoExtract: async (feedId, enabled) => {
+    try {
+      const response = await fetch(`/api/feeds/${feedId}`, { method: "PUT", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ autoExtract: enabled }) });
+      if (!response.ok) throw new Error("保存失败");
+      await get().fetchFeeds();
+    } catch { useArticleStore.setState({ articleActionError: "全文提取设置保存失败，请重试" }); }
+  },
 	folders: [],
 	feeds: [],
 	selectedSource: { type: "all" },

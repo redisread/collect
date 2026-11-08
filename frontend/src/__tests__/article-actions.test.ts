@@ -10,9 +10,9 @@ it("sends an independent hideRead filter and retains the currently selected arti
   vi.stubGlobal("fetch", fetchMock);
   useUiStore.setState({ hideRead: true });
   useArticleStore.setState({ selectedArticleId: "current", sortOrder: "desc" });
-  await useArticleStore.getState().fetchArticles({ type: "starred" }, false);
+  await useArticleStore.getState().fetchArticles({ type: "feed", feedId: "feed" }, false);
   const query = new URL(fetchMock.mock.calls[0][0], "https://collect.test").searchParams;
-  expect(query.get("filter")).toBe("starred");
+  expect(query.get("feedId")).toBe("feed");
   expect(query.get("hideRead")).toBe("true");
   expect(query.get("includeId")).toBe("current");
   expect(useArticleStore.getState().selectedArticleId).toBe("current");
@@ -46,4 +46,26 @@ it("refreshes the loaded page range without dropping a selected article on page 
   await useArticleStore.getState().fetchMoreArticles({ type: "starred" });
   expect(useArticleStore.getState().articles).toHaveLength(65);
   expect(useArticleStore.getState().hasMore).toBe(false);
+});
+
+it.each(["starred", "read_later"] as const)("keeps read articles visible in %s despite the global filter", async type => {
+  const fetchMock = vi.fn().mockResolvedValue(Response.json({ success: true, data: { articles: [], total: 0 } }));
+  vi.stubGlobal("fetch", fetchMock);
+  useUiStore.setState({ hideRead: true });
+  await useArticleStore.getState().fetchArticles({ type });
+  const query = new URL(fetchMock.mock.calls[0][0], "https://collect.test").searchParams;
+  expect(query.get("filter")).toBe(type);
+  expect(query.has("hideRead")).toBe(false);
+  expect(useUiStore.getState().hideRead).toBe(true);
+});
+it("uses the server batch action names and preserves state on a rejected batch", async () => {
+  const article = { id: "one", isRead: true, isStarred: false } as Article;
+  useArticleStore.setState({ articles: [article], selectedArticle: article, pendingArticleIds: [] });
+  const fetchMock = vi.fn().mockResolvedValue(Response.json({ success: false }, { status: 500 }));
+  vi.stubGlobal("fetch", fetchMock);
+  await useArticleStore.getState().batchUpdateArticles("star", ["one"]);
+  expect(JSON.parse(fetchMock.mock.calls[0][1].body).action).toBe("markAsStarred");
+  expect(useArticleStore.getState().articles[0].isStarred).toBe(false);
+  expect(useArticleStore.getState().pendingArticleIds).toEqual([]);
+  expect(useArticleStore.getState().articleActionError).toContain("批量操作失败");
 });
