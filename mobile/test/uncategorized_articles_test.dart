@@ -49,6 +49,22 @@ class DelayedDetailApi extends FakeApi {
 }
 
 void main() {
+  test('pending update protects optimistic state and ignores repeated toggles', () async {
+    final api = PendingUpdateApi();
+    final container = ProviderContainer(overrides: [apiServiceProvider.overrideWithValue(api)]);
+    addTearDown(container.dispose);
+    final notifier = container.read(articlesNotifierProvider.notifier);
+    await Future<void>.delayed(Duration.zero);
+    final update = notifier.toggleRead('a');
+    expect(await notifier.toggleRead('a'), isFalse);
+    api.delayList = true;
+    final reload = notifier.loadArticles();
+    api.list.complete([{'id': 'a', 'feedId': 'f', 'title': 'A', 'url': 'https://a.test', 'isRead': false}]);
+    await reload;
+    expect(container.read(articlesNotifierProvider).articles.single.isRead, isTrue);
+    api.update.complete();
+    expect(await update, isTrue);
+  });
   test('late detail response preserves a more recent read change', () async {
     final api = DelayedDetailApi();
     final container = ProviderContainer(overrides: [apiServiceProvider.overrideWithValue(api)]);

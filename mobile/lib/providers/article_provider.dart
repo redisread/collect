@@ -35,6 +35,7 @@ class ArticlesNotifier extends StateNotifier<ArticlesState> {
   int _readVersion = 0;
   int _loadVersion = 0;
   final Map<String, ({bool isRead, int version})> _readChanges = {};
+  final Set<String> _pendingReadIds = {};
 
   ArticlesNotifier(this.ref) : super(const ArticlesState(isLoading: true));
 
@@ -43,7 +44,7 @@ class ArticlesNotifier extends StateNotifier<ArticlesState> {
     final data = await ref.read(apiServiceProvider).getArticle(articleId);
     var article = Article.fromJson(data['data'] as Map<String, dynamic>);
     final change = _readChanges[articleId];
-    if (change != null && change.version > readVersion) {
+    if (change != null && (change.version > readVersion || _pendingReadIds.contains(articleId))) {
       article = article.copyWith(isRead: change.isRead);
     } else {
       _updateArticle(articleId, isRead: article.isRead);
@@ -65,7 +66,7 @@ class ArticlesNotifier extends StateNotifier<ArticlesState> {
       if (!mounted || loadVersion != _loadVersion) return;
       state = state.copyWith(articles: articles.map((article) {
         final change = _readChanges[article.id];
-        return change != null && change.version > readVersion
+        return change != null && (change.version > readVersion || _pendingReadIds.contains(article.id))
             ? article.copyWith(isRead: change.isRead) : article;
       }).toList(), isLoading: false);
     } catch (e) {
@@ -75,7 +76,9 @@ class ArticlesNotifier extends StateNotifier<ArticlesState> {
   }
 
   /// 切换已读状态（乐观更新）
-  Future<void> toggleRead(String articleId) async {
+  Future<bool> toggleRead(String articleId) async {
+    if (!_pendingReadIds.add(articleId)) return false;
+    try {
     final article = state.articles.firstWhere((a) => a.id == articleId);
     final newReadStatus = !article.isRead;
 
@@ -87,11 +90,13 @@ class ArticlesNotifier extends StateNotifier<ArticlesState> {
       await api.updateArticle(articleId, {'isRead': newReadStatus});
       _updateArticle(articleId, isRead: newReadStatus);
       ref.invalidate(feedsProvider);
+      return true;
     } catch (e) {
       // 失败时回滚
       _updateArticle(articleId, isRead: article.isRead);
       rethrow;
     }
+    } finally { _pendingReadIds.remove(articleId); }
   }
 
   /// 切换收藏状态（乐观更新）

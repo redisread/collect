@@ -895,8 +895,8 @@ $content
     if (_isTogglingRead) return;
     _isTogglingRead = true;
     try {
-      await ref.read(articlesNotifierProvider.notifier).toggleRead(articleId);
-      if (mounted && _cachedArticle?.id == articleId) {
+      final updated = await ref.read(articlesNotifierProvider.notifier).toggleRead(articleId);
+      if (updated && mounted && _cachedArticle?.id == articleId) {
         setState(() => _cachedArticle = _cachedArticle?.copyWith(isRead: isRead));
       }
     } catch (_) {
