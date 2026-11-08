@@ -12,3 +12,10 @@ it("refreshes the unfiled article list after deleting a folder", async () => {
   expect(refresh).toHaveBeenCalledWith({ type: "uncategorized" });
   expect(useFeedStore.getState().moveStatus).toBeNull();
 });
+
+it("reports a network failure when deleting a folder", async () => {
+  useFeedStore.setState({ moveStatus: null });
+  vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
+  await useFeedStore.getState().deleteFolder("folder");
+  expect(useFeedStore.getState().moveStatus).toContain("删除文件夹失败");
+});
