@@ -111,6 +111,11 @@
         folders[index].merge(fields ?? [:]) { _, new in new }
         sequence += 1
         data = folders[index]
+      } else if path == "/api/translate" {
+        data = [
+          "translatedHtml": "<p>这是翻译后的测试正文。</p>",
+          "bilingualHtml": "<p>这是一篇本地测试文章。</p><p>这是翻译后的测试正文。</p>",
+        ]
       } else if path == "/api/settings" {
         data = ["articleRetentionDays": 30, "translationTargetLanguage": "zh-CN"]
       } else if path == "/api/native/articles" {

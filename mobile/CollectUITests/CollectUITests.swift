@@ -1,6 +1,86 @@
 import XCTest
 
 final class CollectUITests: XCTestCase {
+  @MainActor func testReaderActionsLight() {
+    verifyReaderActions(appearance: "light")
+  }
+
+  @MainActor func testReaderActionsDark() {
+    verifyReaderActions(appearance: "dark")
+  }
+
+  @MainActor func testReaderActionsLargeText() {
+    let app = XCUIApplication()
+    app.launchArguments = [
+      "--ui-testing", "-appearance", "light",
+      "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL",
+    ]
+    app.launch()
+    XCTAssertTrue(app.buttons["未读, 1"].waitForExistence(timeout: 10))
+    app.buttons["未读, 1"].tap()
+    let article = app.staticTexts["给阅读留一点时间"]
+    XCTAssertTrue(article.waitForExistence(timeout: 10))
+    article.tap()
+    XCTAssertTrue(app.buttons["阅读操作"].waitForExistence(timeout: 10))
+    app.buttons["阅读操作"].tap()
+    XCTAssertTrue(app.buttons["在浏览器中打开"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.buttons["在浏览器中打开"].isHittable)
+    let initial = XCTAttachment(screenshot: app.screenshot())
+    initial.name = "Reader actions large text opened"
+    initial.lifetime = .keepAlways
+    add(initial)
+    let menu = app.scrollViews["reader-actions-scroll"]
+    menu.swipeUp()
+    let original = app.buttons["reader-mode-0"]
+    if !original.isHittable { menu.swipeUp() }
+    XCTAssertTrue(original.isHittable)
+    XCTAssertTrue(original.isSelected)
+    XCTAssertFalse(app.buttons["reader-mode-1"].isEnabled)
+    let capture = XCTAttachment(screenshot: app.screenshot())
+    capture.name = "Reader actions accessibility text"
+    capture.lifetime = .keepAlways
+    add(capture)
+  }
+
+  @MainActor private func verifyReaderActions(appearance: String) {
+    let app = XCUIApplication()
+    app.launchArguments = ["--ui-testing", "-appearance", appearance]
+    app.launch()
+    XCTAssertTrue(app.buttons["unclassified-folder"].waitForExistence(timeout: 10))
+    app.buttons["unclassified-folder"].tap()
+    let article = app.staticTexts["给阅读留一点时间"]
+    XCTAssertTrue(article.waitForExistence(timeout: 10))
+    article.tap()
+    XCTAssertTrue(app.webViews.staticTexts["这是一篇本地测试文章。"].waitForExistence(timeout: 10))
+    app.buttons["阅读操作"].tap()
+    XCTAssertTrue(app.buttons["在浏览器中打开"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.buttons["分享"].isHittable)
+    XCTAssertTrue(app.buttons["标记未读"].isHittable)
+    XCTAssertFalse(app.buttons["reader-mode-1"].isEnabled)
+    XCTAssertFalse(app.buttons["reader-mode-2"].isEnabled)
+    let capture = XCTAttachment(screenshot: app.screenshot())
+    capture.name = "Reader actions \(appearance)"
+    capture.lifetime = .keepAlways
+    add(capture)
+    app.buttons["翻译为简体中文"].tap()
+    XCTAssertTrue(app.staticTexts["reader-operation-message"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.buttons["reader-mode-1"].isEnabled)
+    XCTAssertTrue(app.buttons["reader-mode-1"].isSelected)
+    app.buttons["reader-mode-2"].tap()
+    XCTAssertTrue(app.buttons["reader-mode-2"].isSelected)
+    app.buttons["reader-mode-0"].tap()
+    XCTAssertTrue(app.buttons["reader-mode-0"].isSelected)
+    app.buttons["提取全文"].tap()
+    let reset = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "enabled == false"), object: app.buttons["reader-mode-1"])
+    XCTAssertEqual(XCTWaiter.wait(for: [reset], timeout: 5), .completed)
+    XCTAssertTrue(app.buttons["reader-mode-0"].isSelected)
+    app.buttons["标记未读"].tap()
+    XCTAssertTrue(app.buttons["阅读操作"].waitForExistence(timeout: 5))
+    app.buttons["阅读操作"].tap()
+    XCTAssertTrue(app.buttons["标记已读"].waitForExistence(timeout: 5))
+  }
+
   @MainActor func testManagementSearchMoveAndUnsubscribe() {
     let app = XCUIApplication()
     app.launchArguments = ["--ui-testing"]
