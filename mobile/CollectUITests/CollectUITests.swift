@@ -152,9 +152,13 @@ final class CollectUITests: XCTestCase {
     app.buttons["排序"].tap()
     let moved = app.cells.containing(.staticText, identifier: "归档").firstMatch
     let other = app.cells.containing(.staticText, identifier: "测试目录").firstMatch
-    moved.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).press(
+    let handle = moved.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Reorder ")).firstMatch
+    let destinationHandle = other.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Reorder ")).firstMatch
+    XCTAssertTrue(handle.waitForExistence(timeout: 10))
+    XCTAssertTrue(destinationHandle.waitForExistence(timeout: 10))
+    handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(
       forDuration: 0.8,
-      thenDragTo: other.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.1)))
+      thenDragTo: destinationHandle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)))
     XCTAssertLessThan(moved.frame.minY, other.frame.minY)
   }
 
