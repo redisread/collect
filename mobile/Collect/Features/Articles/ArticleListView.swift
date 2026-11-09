@@ -5,11 +5,10 @@ struct ArticleListView: View {
   let scope: ArticleScope
   @State private var search = ""
   @State private var hideRead = false
-  @State private var scrollID: String?
   @State private var restored = false
-  private var positionKey: String {
-    "list-position-\(store.session?.account.id ?? "")-\(String(reflecting: scope))"
-  }
+  @State private var selection: ReaderSelection?
+  @State private var markingRead = false
+  @State private var message: String?
   private var rows: [ArticleDTO] {
     _ = BackgroundDownloads.shared.revision
     return store.articles.filter { article in
@@ -42,14 +41,19 @@ struct ArticleListView: View {
     ScrollViewReader { proxy in
       List {
         ForEach(rows) { article in
-          NavigationLink {
-            ReaderView(articleID: article.id)
+          Button {
+            selection = ReaderSelection(id: article.id, articleIDs: rows.map(\.id))
           } label: {
             VStack(alignment: .leading, spacing: 8) {
               HStack {
                 Text(store.feeds.first { $0.id == article.feedId }?.title ?? "订阅").font(.caption)
                   .foregroundStyle(.secondary)
                 Spacer()
+                if let date = article.publicationDate {
+                  Text(date, format: .dateTime.year().month().day())
+                    .font(.caption).foregroundStyle(.secondary)
+                    .accessibilityLabel("发布时间 \(date.formatted(date: .long, time: .omitted))")
+                }
                 if article.isRead != true {
                   Circle().fill(.orange).frame(width: 6, height: 6).accessibilityLabel("未读")
                 }
@@ -64,14 +68,8 @@ struct ArticleListView: View {
               }
             }.padding(.vertical, 8)
           }
+          .buttonStyle(.plain)
           .id(article.id)
-          .background {
-            GeometryReader { geometry in
-              Color.clear.preference(
-                key: VisibleRowPreference.self,
-                value: [article.id: geometry.frame(in: .named("article-list")).minY])
-            }
-          }
           .swipeActions(edge: .leading) {
             Button(article.isRead == true ? "标记未读" : "标记已读", systemImage: "checkmark") {
               store.change(article.id, field: .isRead, value: article.isRead == true ? 0 : 1)
@@ -92,23 +90,44 @@ struct ArticleListView: View {
         }
       }
       .coordinateSpace(name: "article-list")
-      .onPreferenceChange(VisibleRowPreference.self) { positions in
-        scrollID = positions.filter { $0.value >= 0 }.min { $0.value < $1.value }?.key
-      }
       .task(id: rows.first?.id) {
-        guard !restored, !rows.isEmpty else { return }
+        guard !restored, let first = rows.first else { return }
         restored = true
-        if let id = UserDefaults.standard.string(forKey: positionKey) {
-          proxy.scrollTo(id, anchor: .top)
-        }
+        proxy.scrollTo(first.id, anchor: .top)
       }
-      .onDisappear { if let scrollID { UserDefaults.standard.set(scrollID, forKey: positionKey) } }
+      .onChange(of: scope) { _, _ in
+        restored = false
+        if let first = rows.first { proxy.scrollTo(first.id, anchor: .top) }
+      }
+      .onChange(of: store.articleSortOrder) { _, _ in
+        if let first = rows.first { proxy.scrollTo(first.id, anchor: .top) }
+      }
       .scrollContentBackground(.hidden).background(Color("ReaderBackground"))
+      .navigationDestination(item: $selection) { selected in
+        ReaderView(articleID: selected.id, articleIDs: selected.articleIDs)
+      }
       .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
       .searchable(text: $search, prompt: "搜索已同步的文章")
       .toolbar {
+        if case .folder(let id) = scope {
+          Button(markingRead ? "正在处理…" : "全部标为已读") {
+            markingRead = true
+            message = nil
+            Task {
+              defer { markingRead = false }
+              do { try await store.markFolderRead(id) }
+              catch { message = error.localizedDescription }
+            }
+          }
+          .disabled(markingRead || !store.articles.contains { article in
+            article.isRead != true && store.activeFeeds.contains { $0.id == article.feedId && $0.folderId == id }
+          })
+        }
         if case .feed(let id) = scope { Button("全部标为已读") { store.markFeedRead(id) } }
         Toggle("隐藏已读", systemImage: "line.3.horizontal.decrease", isOn: $hideRead)
+      }
+      .safeAreaInset(edge: .bottom) {
+        if let message { Text(message).font(.caption).padding().background(.regularMaterial) }
       }
       .overlay {
         if rows.isEmpty {

@@ -23,6 +23,12 @@ struct ArticleDTO: Codable, Identifiable, Sendable, Equatable {
   var laterVersion: Int
   var progressVersion: Int
 
+  var publicationDate: Date? {
+    guard let publishedAt else { return nil }
+    return (try? Date(publishedAt, strategy: .iso8601.time(includingFractionalSeconds: true)))
+      ?? (try? Date(publishedAt, strategy: .iso8601))
+  }
+
   func version(for field: ArticleField) -> Int {
     switch field {
     case .isRead: readVersion

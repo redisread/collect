@@ -38,3 +38,56 @@ struct AppearanceTests {
     #expect(html.contains("background:#fff;color:#222"))
   }
 }
+
+struct PublicationTests {
+  @Test func supportsFractionalTimestampsAndRejectsMissingDates() throws {
+    let payload = "{\"id\":\"a\",\"feedId\":\"f\",\"title\":\"A\",\"url\":\"https://example.com\",\"readVersion\":0,\"starVersion\":0,\"laterVersion\":0,\"progressVersion\":0}"
+    var article = try JSONDecoder().decode(ArticleDTO.self, from: Data(payload.utf8))
+    #expect(article.publicationDate == nil)
+    article.publishedAt = "invalid"
+    #expect(article.publicationDate == nil)
+    article.publishedAt = "2026-11-08T10:00:00.123Z"
+    #expect(article.publicationDate != nil)
+    article.publishedAt = "2026-11-08T10:00:00Z"
+    #expect(article.publicationDate != nil)
+  }
+
+  @Test @MainActor func persistsOrderAndKeepsUnknownDatesLast() async throws {
+    let container = try ModelContainer(for: Schema(versionedSchema: CollectSchema.self),
+      configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+    let store = LibraryStore(container: container,
+      api: APIClient(baseURL: try #require(URL(string: "https://example.com")), transport: PreviewTransport()),
+      restoreSession: false)
+    store.session = SavedSession(token: "test", account: Account(id: "owner", name: "Owner", email: "test@example.invalid"))
+    await store.sync()
+    #expect(store.articles.map(\.id) == ["sample", "folder-article"])
+    try store.savePreferences(ReaderPreferences(articleRetentionDays: 30, translationTargetLanguage: "zh-CN", articleSortOrder: "asc"))
+    #expect(store.articles.map(\.id) == ["folder-article", "sample"])
+    try store.reloadLocal()
+    #expect(store.articleSortOrder == "asc")
+    let old = try JSONDecoder().decode(ReaderPreferences.self,
+      from: Data("{\"articleRetentionDays\":30,\"translationTargetLanguage\":\"zh-CN\"}".utf8))
+    #expect(old.articleSortOrder == nil)
+  }
+
+  @Test @MainActor func automaticExtractionPersistsInCatalog() async throws {
+    let container = try ModelContainer(for: Schema(versionedSchema: CollectSchema.self),
+      configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+    let transport = CountingTransport()
+    let store = LibraryStore(container: container,
+      api: APIClient(baseURL: try #require(URL(string: "https://example.com")), transport: transport),
+      restoreSession: false)
+    store.session = SavedSession(token: "test", account: Account(id: "owner", name: "Owner", email: "test@example.invalid"))
+    await store.sync()
+    try await store.enableAutomaticExtraction("feed")
+    try store.reloadLocal()
+    #expect(store.feeds.first { $0.id == "feed" }?.autoExtract == true)
+    #expect(store.feeds.first { $0.id == "folder-feed" }?.autoExtract != true)
+    let callsBefore = await transport.calls().count
+    try await store.markFolderRead("test-folder")
+    let calls = await transport.calls()
+    #expect(Array(calls.dropFirst(callsBefore)) == ["POST /api/folders/test-folder/mark-all-read?"])
+    #expect(store.articles.first { $0.id == "folder-article" }?.isRead == true)
+    #expect(store.articles.first { $0.id == "sample" }?.isRead != true)
+  }
+}

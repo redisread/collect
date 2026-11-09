@@ -6,6 +6,8 @@ import { readTranslationLanguage, saveTranslationLanguage } from "../lib/setting
 import { useArticleStore } from "../lib/store/articleStore";
 
 vi.mock("../lib/settings", () => ({ readTranslationLanguage: vi.fn(), saveTranslationLanguage: vi.fn() }));
+vi.mock("../components/app/ArticleSortSettings", () => ({ ArticleSortSettings: () => null }));
+vi.mock("../components/app/common/ThemeToggle", () => ({ ThemeToggle: () => null }));
 vi.mock("../components/app/ProfileSettings", () => ({ ProfileSettings: () => null }));
 vi.mock("../components/app/RetentionSettings", () => ({ RetentionSettings: () => null }));
 vi.mock("../components/app/AiTranslationSettings", () => ({ AiTranslationSettings: () => null }));

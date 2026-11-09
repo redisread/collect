@@ -1,0 +1,1 @@
+ALTER TABLE `user_preferences` ADD `article_sort_order` text DEFAULT 'desc' NOT NULL;

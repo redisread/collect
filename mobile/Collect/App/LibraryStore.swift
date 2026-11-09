@@ -25,6 +25,7 @@ final class LibraryStore {
   private var uploadRequested = false
   var records: [String: CachedArticle] = [:]
   private let cacheLimit: Int
+  var articleSortOrder = "desc"
   var articleRetentionDays = 30
   var language = UserDefaults.standard.string(forKey: "translationLanguage") ?? "zh-CN"
   private var context: ModelContext { container.mainContext }
@@ -89,7 +90,7 @@ final class LibraryStore {
         }
       }
     }
-    articles = values.sorted { ($0.publishedAt ?? "", $0.id) > ($1.publishedAt ?? "", $1.id) }
+    articleSortOrder = "desc"
     if let catalog = try context.fetch(
       FetchDescriptor<CachedCatalog>(predicate: #Predicate { $0.owner == owner })
     ).first {
@@ -100,7 +101,19 @@ final class LibraryStore {
         let preferences = try JSONDecoder().decode(ReaderPreferences.self, from: data)
         articleRetentionDays = preferences.articleRetentionDays
         language = preferences.translationTargetLanguage
+        articleSortOrder = preferences.articleSortOrder == "asc" ? "asc" : "desc"
       }
+    }
+    articles = values.sorted { left, right in
+      let leftDate = left.publicationDate
+      let rightDate = right.publicationDate
+      if (leftDate == nil) != (rightDate == nil) { return leftDate != nil }
+      if leftDate == rightDate {
+        return articleSortOrder == "asc" ? left.id < right.id : left.id > right.id
+      }
+      return articleSortOrder == "asc"
+        ? (leftDate ?? .distantPast) < (rightDate ?? .distantPast)
+        : (leftDate ?? .distantPast) > (rightDate ?? .distantPast)
     }
     let last = stored.filter { $0.readAt != nil }.max {
       ($0.readAt ?? .distantPast) < ($1.readAt ?? .distantPast)
@@ -401,6 +414,31 @@ final class LibraryStore {
       context.insert(record)
       records[article.id] = record
     }
+  }
+
+  func markFolderRead(_ folderID: String) async throws {
+    guard let saved = session else { return }
+    // Flush local edits before the bulk mutation so old pending unread values cannot undo it.
+    await uploadPending()
+    guard session?.token == saved.token else { return }
+    guard try pending(saved.account.id).isEmpty else {
+      throw APIError(status: 0, message: "请先同步尚未保存的修改，再重试")
+    }
+    let response: ArticlePage = try await api.request(
+      "/api/folders/\(folderID)/mark-all-read", method: "POST", token: saved.token)
+    guard session?.token == saved.token else { return }
+    for article in response.articles { try mergeArticle(article, owner: saved.account.id) }
+    try context.save()
+    try reloadLocal()
+  }
+
+  func enableAutomaticExtraction(_ feedID: String) async throws {
+    guard let saved = session else { return }
+    let updated: FeedDTO = try await api.request(
+      "/api/feeds/\(feedID)", method: "PUT", token: saved.token,
+      body: JSONEncoder().encode(["autoExtract": true]))
+    guard session?.token == saved.token else { return }
+    try applyFeed(updated)
   }
 
   func markFeedRead(_ feedID: String) {

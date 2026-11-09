@@ -10,6 +10,7 @@ struct SettingsView: View {
   @State private var job: ImportJob?
   @State private var message: String?
   @State private var logout = false
+  @State private var savingSort = false
   @State private var language = "zh-CN"
   var body: some View {
     Form {
@@ -19,11 +20,15 @@ struct SettingsView: View {
         Button("退出登录", role: .destructive) { logout = true }
       }
       Section("阅读") {
-        Picker("外观", selection: $appearance) {
-          Text("跟随系统").tag("system")
-          Text("浅色").tag("light")
-          Text("深色").tag("dark")
+        AppearancePicker(selection: $appearance)
+        Menu {
+          Button("最新发布优先") { saveSort("desc") }
+          Button("最早发布优先") { saveSort("asc") }
+        } label: {
+          LabeledContent("文章排序", value: store.articleSortOrder == "asc" ? "最早发布优先" : "最新发布优先")
         }
+        .disabled(savingSort)
+        if savingSort { ProgressView("正在保存排序…") }
         NavigationLink("文章保存期限") { RetentionSettingsView() }
         Picker("翻译语言", selection: $language) {
           Text("简体中文").tag("zh-CN")
@@ -56,7 +61,7 @@ struct SettingsView: View {
               "/api/settings/translation", method: "PUT", token: session.token,
               body: JSONEncoder().encode(["targetLanguage": value]))
             guard store.session?.token == session.token else { return }
-            try store.savePreferences(ReaderPreferences(articleRetentionDays: store.articleRetentionDays, translationTargetLanguage: value))
+            try store.savePreferences(ReaderPreferences(articleRetentionDays: store.articleRetentionDays, translationTargetLanguage: value, articleSortOrder: store.articleSortOrder))
           } catch { message = error.localizedDescription }
         }
       }
@@ -93,6 +98,24 @@ struct SettingsView: View {
         Button("退出登录", role: .destructive) { Task { await store.signOut() } }
       }
   }
+  private func saveSort(_ order: String) {
+    guard !savingSort, let session = store.session else { return }
+    savingSort = true
+    message = nil
+    Task {
+      defer { savingSort = false }
+      do {
+        let _: EmptyResponse = try await store.api.request(
+          "/api/settings/article-sort", method: "PUT", token: session.token,
+          body: JSONEncoder().encode(["articleSortOrder": order]))
+        guard store.session?.token == session.token else { return }
+        try store.savePreferences(ReaderPreferences(articleRetentionDays: store.articleRetentionDays,
+          translationTargetLanguage: store.language, articleSortOrder: order))
+        message = "排序已保存"
+      } catch { message = "排序保存失败，请重试。\(error.localizedDescription)" }
+    }
+  }
+
   private func export() {
     Task {
       do {

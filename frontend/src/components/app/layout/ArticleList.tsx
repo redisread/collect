@@ -9,18 +9,21 @@ import { EmptyState } from "../common/EmptyState";
 
 export function ArticleList() {
   const reduceMotion = useReducedMotion();
-	const { articles, isLoading, hasMore, fetchMoreArticles, total, sortOrder, setSortOrder } =
+	const { articles, isLoading, hasMore, fetchMoreArticles, total, sortOrder, saveSortOrder, isSavingSort } =
 		useArticleStore();
-	const { selectedSource } = useFeedStore();
+	const { selectedSource, markingFolderId, markFolderRead, feeds, folders } = useFeedStore();
   const { hideRead, setHideRead } = useUiStore();
-  const { selectedArticleId, isLoadingDetail, articleActionError } = useArticleStore();
+  const { selectedArticleId, isLoadingDetail, articleActionError, listError } = useArticleStore();
   const savedGroup = isSavedGroup(selectedSource);
   const visibleArticles = articles.filter(article => savedGroup || !hideRead || !article.isRead || article.id === selectedArticleId);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const sourceKey = JSON.stringify(selectedSource);
+  useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = 0; }, [sourceKey, sortOrder]);
 	const bottomRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
 		void useArticleStore.getState().fetchArticles(useFeedStore.getState().selectedSource, false);
-	}, [sortOrder, hideRead]);
+	}, [hideRead]);
 	useEffect(() => {
 		if (!isLoadingDetail && useUiStore.getState().hideRead) void useArticleStore.getState().fetchArticles(useFeedStore.getState().selectedSource, false);
 	}, [selectedArticleId, isLoadingDetail]);
@@ -29,11 +32,11 @@ export function ArticleList() {
 	const handleObserver = useCallback(
 		(entries: IntersectionObserverEntry[]) => {
 			const [entry] = entries;
-			if (entry.isIntersecting && hasMore && !isLoading) {
+			if (entry.isIntersecting && hasMore && !isLoading && !listError) {
 				fetchMoreArticles(selectedSource);
 			}
 		},
-		[hasMore, isLoading, fetchMoreArticles, selectedSource]
+		[hasMore, isLoading, listError, fetchMoreArticles, selectedSource]
 	);
 
 	useEffect(() => {
@@ -49,6 +52,8 @@ export function ArticleList() {
 			case "starred": return "收藏";
 			case "read_later": return "稍后阅读";
 			case "uncategorized": return "未分类";
+      case "folder": return folders.find(folder => folder.id === selectedSource.folderId)?.name ?? "文件夹";
+      case "feed": return feeds.find(feed => feed.id === selectedSource.feedId)?.title ?? "订阅源";
 			default: return "文章";
 		}
 	};
@@ -56,20 +61,27 @@ export function ArticleList() {
 	return (
 		<div className="flex flex-col h-full border-r border-[var(--border)]">
 			{/* 列表标题栏 */}
-			<div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)] shrink-0">
+			<div className="flex flex-wrap items-center justify-between gap-1 px-4 py-3 border-b border-[var(--border)] shrink-0">
 				<div>
-					<h2 className="text-sm font-semibold text-[var(--text-primary)]">{getTitle()}</h2>
+					<h2 className="break-words text-sm font-semibold text-[var(--text-primary)]">{getTitle()}</h2>
 					{total > 0 && (
 						<p className="text-[11px] text-[var(--text-tertiary)]">{total} 篇</p>
 					)}
 				</div>
+        {selectedSource.type === "folder" && <button
+          disabled={markingFolderId !== null || !feeds.some(feed => feed.folderId === selectedSource.folderId && (feed.unreadCount ?? 0) > 0)}
+          className="min-h-11 px-2 text-xs text-[var(--text-secondary)] disabled:opacity-50"
+          onClick={() => void markFolderRead(selectedSource.folderId)}>
+          {markingFolderId === selectedSource.folderId ? "正在处理…" : "全部标为已读"}
+        </button>}
         {selectedSource.type === "feed" && <button className="min-h-11 px-2 text-xs text-[var(--text-secondary)]" onClick={() => void useFeedStore.getState().markFeedRead(selectedSource.feedId)}>全部标为已读</button>}
 				<label className="ms-auto flex min-h-11 items-center gap-2 px-2 text-xs text-[var(--text-secondary)]">
           <input type="checkbox" disabled={savedGroup} checked={!savedGroup && hideRead} onChange={event => setHideRead(event.target.checked)} className="accent-[var(--accent)]" />隐藏已读
         </label>
         {/* 排序切换 */}
 				<button
-					onClick={() => setSortOrder(sortOrder === "desc" ? "asc" : "desc")}
+					disabled={isSavingSort}
+          onClick={() => void saveSortOrder(sortOrder === "desc" ? "asc" : "desc")}
 					title={sortOrder === "desc" ? "最新在前" : "最旧在前"}
 					className="min-w-11 min-h-11 flex items-center justify-center rounded-lg text-[var(--text-tertiary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] transition-colors"
 				>
@@ -84,8 +96,13 @@ export function ArticleList() {
 			</div>
 
 			{articleActionError && <p role="alert" className="px-4 py-2 text-sm text-[var(--text-secondary)]">{articleActionError}</p>}
+      {listError && <div role="alert" className="px-4 py-2 text-sm text-[var(--text-secondary)]">
+        <p>{listError}</p>
+        <button disabled={isLoading} className="min-h-11 underline underline-offset-4"
+          onClick={() => void useArticleStore.getState().fetchArticles(selectedSource, false)}>重新加载</button>
+      </div>}
       {/* 文章列表 */}
-			<div className="flex-1 overflow-y-auto">
+			<div ref={scrollRef} className="flex-1 overflow-y-auto" style={{ overflowAnchor: "none" }}>
 				{isLoading && articles.length === 0 ? (
 					<div>
 						{Array.from({ length: 8 }).map((_, i) => (
@@ -96,8 +113,8 @@ export function ArticleList() {
 					<div className="flex h-full flex-col items-center justify-center">
           <EmptyState
 						icon="📭"
-						title={hideRead ? "暂无未读文章" : "暂无文章"}
-						description={hideRead ? "可显示全部文章继续阅读" : "添加订阅源后，文章将在这里显示"}
+						title={listError ? "暂时无法加载文章" : hideRead ? "暂无未读文章" : "暂无文章"}
+						description={listError ? "请重新加载后继续阅读" : hideRead ? "可显示全部文章继续阅读" : "添加订阅源后，文章将在这里显示"}
 						className=""
 					/>
           {hideRead && <button className="min-h-11 rounded-lg bg-[var(--accent-light)] px-4 text-sm" onClick={() => setHideRead(false)}>显示全部</button>}

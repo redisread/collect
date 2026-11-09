@@ -34,6 +34,7 @@ export default function App({ initialPage = "reader" }: { initialPage?: "reader"
     if (!isAuthenticated || page !== "reader") return;
     const refresh = () => {
       const store = useArticleStore.getState();
+      void store.loadSortOrder().catch(() => {});
       if (!store.isLoadingPreference && !store.isTranslating && !store.isExtracting) {
         void store.loadTargetLanguage().catch(() => {});
       }

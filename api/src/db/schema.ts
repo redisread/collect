@@ -325,6 +325,7 @@ export const userPreferences = sqliteTable(
     // 文章设置
     maxArticlesPerFeed: integer("max_articles_per_feed").default(100), // 每个订阅源保留的最大文章数
     articleRetentionDays: integer("article_retention_days").default(30), // 普通文章保留天数，可选 7、30、60、90
+    articleSortOrder: text("article_sort_order").notNull().default("desc"),
     defaultView: text("default_view").default("all"), // "all" | "unread" | "starred" | "read-later"
     // 刷新设置
     refreshIntervalMinutes: integer("refresh_interval_minutes").default(30), // 默认刷新间隔

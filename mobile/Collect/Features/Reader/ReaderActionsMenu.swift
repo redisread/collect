@@ -16,6 +16,9 @@ struct ReaderActionsMenu: View {
   let toggleRead: () -> Void
   let extract: () -> Void
   let translate: () -> Void
+  var feedTitle: String? = nil
+  var autoExtract = false
+  var enableAutoExtract: () -> Void = {}
 
   private var languageName: String {
     switch language {
@@ -53,6 +56,16 @@ struct ReaderActionsMenu: View {
             systemImage: "doc.text", processing: operation == .extraction)
         }
         .disabled(operation != nil)
+        if let feedTitle {
+          Button(action: enableAutoExtract) {
+            VStack(alignment: .leading, spacing: 0) {
+              ReaderActionLabel(title: autoExtract ? "已启用自动抓取原文" : "为此订阅源自动抓取原文",
+                systemImage: autoExtract ? "checkmark.circle" : "doc.badge.gearshape")
+              Text(feedTitle).font(.caption).foregroundStyle(.secondary).padding(.horizontal, 16)
+            }
+          }
+          .disabled(autoExtract || operation != nil)
+        }
         Button(action: translate) {
           ReaderActionLabel(
             title: operation == .translation ? "正在翻译…" : "翻译为\(languageName)",

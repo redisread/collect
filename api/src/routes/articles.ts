@@ -1,3 +1,4 @@
+import { articleOrder, readArticleOrder } from "../lib/article-order";
 import { automaticallyExtract } from "../lib/automatic-extraction";
 import { articleExpiry } from "../lib/article-retention";
 import { Hono } from "hono";
@@ -58,39 +59,21 @@ articlesRoute.get("/", async (c) => {
     const filter = c.req.query("filter"); // "starred" | "read_later" | "unread"
     const page = parseInt(c.req.query("page") ?? "1", 10);
     const pageSize = Math.min(parseInt(c.req.query("pageSize") ?? "30", 10), 100);
-    const sortOrder = c.req.query("sort") === "asc" ? "asc" : "desc";
-
     const db = getDb(c.env.DB);
+    const requestedSort = c.req.query("sort");
+    const sortOrder = requestedSort === "asc" || requestedSort === "desc"
+      ? requestedSort : await readArticleOrder(db, userId);
 
-    // 先获取当前用户所有 feedId（或按条件过滤）
-    let userFeedIds: string[];
+    // Keep the feed scope in SQL so large libraries use a bounded number of D1 parameters.
+    const feedConditions = [eq(feeds.userId, userId)];
     if (feedId) {
-      const [feed] = await db
-        .select({ id: feeds.id })
-        .from(feeds)
-        .where(and(eq(feeds.id, feedId), eq(feeds.userId, userId)));
-      if (!feed) return c.json({ success: true, data: { articles: [], total: 0, page, pageSize } });
-      userFeedIds = [feed.id];
+      feedConditions.push(eq(feeds.id, feedId));
     } else if (folderId || c.req.query("uncategorized") === "true") {
-      const folderFeeds = await db
-        .select({ id: feeds.id })
-        .from(feeds)
-        .where(and(folderId ? eq(feeds.folderId, folderId) : isNull(feeds.folderId), eq(feeds.userId, userId), isNull(feeds.unsubscribedAt)));
-      if (folderFeeds.length === 0) return c.json({ success: true, data: { articles: [], total: 0, page, pageSize } });
-      userFeedIds = folderFeeds.map((f) => f.id);
-    } else {
-      const userFeeds = await db
-        .select({ id: feeds.id })
-        .from(feeds)
-        .where(eq(feeds.userId, userId));
-      if (userFeeds.length === 0) return c.json({ success: true, data: { articles: [], total: 0, page, pageSize } });
-      userFeedIds = userFeeds.map((f) => f.id);
+      feedConditions.push(folderId ? eq(feeds.folderId, folderId) : isNull(feeds.folderId));
+      feedConditions.push(isNull(feeds.unsubscribedAt));
     }
-
-    // 构建查询条件
-    const conditions = [
-      sql`${articles.feedId} IN (${sql.join(userFeedIds.map((id) => sql`${id}`), sql`, `)})`,
-    ];
+    const userFeeds = db.select({ id: feeds.id }).from(feeds).where(and(...feedConditions));
+    const conditions = [inArray(articles.feedId, userFeeds)];
 
     if (filter === "starred") conditions.push(eq(articles.isStarred, true));
     if (filter === "read_later") conditions.push(eq(articles.isReadLater, true));
@@ -100,7 +83,7 @@ articlesRoute.get("/", async (c) => {
     }
 
     const where = and(...conditions);
-    const orderBy = sortOrder === "asc" ? asc(articles.publishedAt) : desc(articles.publishedAt);
+    const orderBy = articleOrder(sortOrder);
     const offset = (page - 1) * pageSize;
 
     const [articleList, countResult] = await Promise.all([
@@ -122,7 +105,7 @@ articlesRoute.get("/", async (c) => {
         })
         .from(articles)
         .where(where)
-        .orderBy(orderBy)
+        .orderBy(...orderBy)
         .limit(pageSize)
         .offset(offset),
       db

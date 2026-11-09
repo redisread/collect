@@ -71,6 +71,20 @@
       "when": 1794141901856,
       "tag": "0009_subscription_management",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1794229754121,
+      "tag": "0010_petite_robin_chapel",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1794230062174,
+      "tag": "0011_article_sort_sync",
+      "breakpoints": true
     }
   ]
 }

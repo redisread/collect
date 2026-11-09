@@ -152,9 +152,13 @@ final class CollectUITests: XCTestCase {
     app.buttons["排序"].tap()
     let moved = app.cells.containing(.staticText, identifier: "归档").firstMatch
     let other = app.cells.containing(.staticText, identifier: "测试目录").firstMatch
-    moved.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).press(
+    let handle = moved.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Reorder ")).firstMatch
+    let destinationHandle = other.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Reorder ")).firstMatch
+    XCTAssertTrue(handle.waitForExistence(timeout: 10))
+    XCTAssertTrue(destinationHandle.waitForExistence(timeout: 10))
+    handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).press(
       forDuration: 0.8,
-      thenDragTo: other.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.1)))
+      thenDragTo: destinationHandle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)))
     XCTAssertLessThan(moved.frame.minY, other.frame.minY)
   }
 
@@ -188,18 +192,24 @@ final class CollectUITests: XCTestCase {
     XCTAssertTrue(app.staticTexts["目录中的文章"].waitForExistence(timeout: 5))
     XCTAssertFalse(app.staticTexts["给阅读留一点时间"].exists)
     app.navigationBars.buttons.firstMatch.tap()
+    XCTAssertTrue(app.navigationBars["Collect"].waitForExistence(timeout: 10))
     let expand = app.buttons["folder-test-folder-expand"]
+    let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: expand)
+    XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 10), .completed)
     expand.tap()
     XCTAssertTrue(app.navigationBars["Collect"].exists)
-    XCTAssertTrue(app.staticTexts["目录订阅"].exists)
+    XCTAssertTrue(app.staticTexts["目录订阅"].waitForExistence(timeout: 10))
     XCTAssertFalse(app.staticTexts["查看文件夹文章"].exists)
     let screenshot = XCTAttachment(screenshot: app.screenshot())
     screenshot.name = "Folder direct navigation"
     screenshot.lifetime = .keepAlways
     add(screenshot)
     expand.tap()
-    XCTAssertFalse(app.staticTexts["目录订阅"].exists)
+    let collapsed = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "exists == false"), object: app.staticTexts["目录订阅"])
+    XCTAssertEqual(XCTWaiter.wait(for: [collapsed], timeout: 10), .completed)
     expand.tap()
+    XCTAssertTrue(app.staticTexts["目录订阅"].waitForExistence(timeout: 10))
     app.staticTexts["目录订阅"].tap()
     XCTAssertTrue(app.staticTexts["目录中的文章"].waitForExistence(timeout: 5))
     app.navigationBars.buttons.firstMatch.tap()
@@ -280,6 +290,47 @@ final class CollectUITests: XCTestCase {
     XCTAssertTrue(app.webViews.staticTexts["这是一篇本地测试文章。"].isHittable)
     let capture = XCTAttachment(screenshot: app.screenshot())
     capture.name = "Collect Reader"
+    capture.lifetime = .keepAlways
+    add(capture)
+  }
+}
+
+extension CollectUITests {
+  @MainActor func testNextArticleUsesSourceOrderAndReturnsToList() {
+    let app = XCUIApplication()
+    app.launchArguments = ["--ui-testing", "-appearance", "light"]
+    app.launch()
+    XCTAssertTrue(app.buttons["全部文章, 2"].waitForExistence(timeout: 10))
+    app.buttons["全部文章, 2"].tap()
+    app.staticTexts["给阅读留一点时间"].tap()
+    XCTAssertTrue(app.webViews.staticTexts["这是一篇本地测试文章。"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.buttons["next-article"].isEnabled)
+    app.buttons["next-article"].tap()
+    XCTAssertTrue(app.webViews.staticTexts["目录中的文章"].waitForExistence(timeout: 10))
+    XCTAssertFalse(app.buttons["next-article"].isEnabled)
+    app.navigationBars.buttons.firstMatch.tap()
+    XCTAssertTrue(app.staticTexts["给阅读留一点时间"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["目录中的文章"].exists)
+  }
+
+  @MainActor func testAppearanceAndSortSettings() {
+    let app = XCUIApplication()
+    app.launchArguments = ["--ui-testing"]
+    app.launch()
+    XCTAssertTrue(app.buttons["settings-button"].waitForExistence(timeout: 10))
+    app.buttons["settings-button"].tap()
+    let dark = app.buttons["appearance-dark"]
+    XCTAssertTrue(dark.waitForExistence(timeout: 5))
+    dark.tap()
+    XCTAssertTrue(dark.waitForExistence(timeout: 5))
+    XCTAssertTrue(dark.isSelected)
+    app.buttons["appearance-system"].tap()
+    XCTAssertTrue(app.buttons["appearance-system"].isSelected)
+    app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "文章排序")).firstMatch.tap()
+    app.buttons["最早发布优先"].tap()
+    XCTAssertTrue(app.buttons["文章排序, 最早发布优先"].waitForExistence(timeout: 5))
+    let capture = XCTAttachment(screenshot: app.screenshot())
+    capture.name = "Appearance and global sort"
     capture.lifetime = .keepAlways
     add(capture)
   }
