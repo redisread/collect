@@ -188,18 +188,24 @@ final class CollectUITests: XCTestCase {
     XCTAssertTrue(app.staticTexts["目录中的文章"].waitForExistence(timeout: 5))
     XCTAssertFalse(app.staticTexts["给阅读留一点时间"].exists)
     app.navigationBars.buttons.firstMatch.tap()
+    XCTAssertTrue(app.navigationBars["Collect"].waitForExistence(timeout: 10))
     let expand = app.buttons["folder-test-folder-expand"]
+    let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: expand)
+    XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 10), .completed)
     expand.tap()
     XCTAssertTrue(app.navigationBars["Collect"].exists)
-    XCTAssertTrue(app.staticTexts["目录订阅"].exists)
+    XCTAssertTrue(app.staticTexts["目录订阅"].waitForExistence(timeout: 10))
     XCTAssertFalse(app.staticTexts["查看文件夹文章"].exists)
     let screenshot = XCTAttachment(screenshot: app.screenshot())
     screenshot.name = "Folder direct navigation"
     screenshot.lifetime = .keepAlways
     add(screenshot)
     expand.tap()
-    XCTAssertFalse(app.staticTexts["目录订阅"].exists)
+    let collapsed = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "exists == false"), object: app.staticTexts["目录订阅"])
+    XCTAssertEqual(XCTWaiter.wait(for: [collapsed], timeout: 10), .completed)
     expand.tap()
+    XCTAssertTrue(app.staticTexts["目录订阅"].waitForExistence(timeout: 10))
     app.staticTexts["目录订阅"].tap()
     XCTAssertTrue(app.staticTexts["目录中的文章"].waitForExistence(timeout: 5))
     app.navigationBars.buttons.firstMatch.tap()
