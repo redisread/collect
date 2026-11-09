@@ -73,8 +73,9 @@ struct PublicationTests {
   @Test @MainActor func automaticExtractionPersistsInCatalog() async throws {
     let container = try ModelContainer(for: Schema(versionedSchema: CollectSchema.self),
       configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+    let transport = CountingTransport()
     let store = LibraryStore(container: container,
-      api: APIClient(baseURL: try #require(URL(string: "https://example.com")), transport: PreviewTransport()),
+      api: APIClient(baseURL: try #require(URL(string: "https://example.com")), transport: transport),
       restoreSession: false)
     store.session = SavedSession(token: "test", account: Account(id: "owner", name: "Owner", email: "test@example.invalid"))
     await store.sync()
@@ -82,7 +83,11 @@ struct PublicationTests {
     try store.reloadLocal()
     #expect(store.feeds.first { $0.id == "feed" }?.autoExtract == true)
     #expect(store.feeds.first { $0.id == "folder-feed" }?.autoExtract != true)
+    let callsBefore = await transport.calls().count
     try await store.markFolderRead("test-folder")
+    let calls = await transport.calls()
+    #expect(Array(calls.dropFirst(callsBefore)) == ["POST /api/folders/test-folder/mark-all-read?"])
+    #expect(store.articles.first { $0.id == "folder-article" }?.isRead == true)
     #expect(store.articles.first { $0.id == "sample" }?.isRead != true)
   }
 }

@@ -62,7 +62,7 @@
           articles[index]["readVersion"] = (articles[index]["readVersion"] as? Int ?? 0) + 1
         }
         sequence += 1
-        data = ["folderId": folderID]
+        data = ["folderId": folderID, "articles": articles.filter { ids.contains($0["feedId"] as? String ?? "") }]
       } else if path == "/api/feeds/batch/move" || path == "/api/feeds/batch/unsubscribe" {
         let ids = fields?["ids"] as? [String] ?? []
         let unsubscribe = path.hasSuffix("unsubscribe")

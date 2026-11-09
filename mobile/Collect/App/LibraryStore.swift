@@ -424,11 +424,12 @@ final class LibraryStore {
     guard try pending(saved.account.id).isEmpty else {
       throw APIError(status: 0, message: "请先同步尚未保存的修改，再重试")
     }
-    let _: EmptyResponse = try await api.request(
+    let response: ArticlePage = try await api.request(
       "/api/folders/\(folderID)/mark-all-read", method: "POST", token: saved.token)
     guard session?.token == saved.token else { return }
-    await sync()
-    if let error { throw APIError(status: 0, message: "已标为已读，同步失败，请重试。\(error)") }
+    for article in response.articles { try mergeArticle(article, owner: saved.account.id) }
+    try context.save()
+    try reloadLocal()
   }
 
   func enableAutomaticExtraction(_ feedID: String) async throws {

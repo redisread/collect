@@ -1,3 +1,4 @@
+import { nativeArticleFields } from "../lib/native-sync";
 import { reorderFolders } from "../services/SubscriptionManagement";
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
@@ -37,9 +38,13 @@ foldersRoute.post("/:id/mark-all-read", async c => {
   if (!folder) return c.json({ success: false, error: "文件夹不存在" }, 404);
   const folderFeeds = db.select({ id: feeds.id }).from(feeds)
     .where(and(eq(feeds.userId, userId), eq(feeds.folderId, folderId), isNull(feeds.unsubscribedAt)));
-  await db.update(articles).set({ isRead: true }).where(and(
-    eq(articles.userId, userId), eq(articles.isRead, false), inArray(articles.feedId, folderFeeds)));
-  return c.json({ success: true, data: { folderId } });
+  const scope = and(eq(articles.userId, userId), inArray(articles.feedId, folderFeeds));
+  // Read the receipt after version/sync triggers have run, in the same atomic batch.
+  const [, updated] = await db.batch([
+    db.update(articles).set({ isRead: true }).where(and(scope, eq(articles.isRead, false))),
+    db.select(nativeArticleFields).from(articles).where(scope),
+  ]);
+  return c.json({ success: true, data: { folderId, articles: updated } });
 });
 
 foldersRoute.post("/reorder", zValidator("json", z.object({ids:z.array(z.string().min(1)).min(1).max(500).refine(ids=>new Set(ids).size===ids.length)})), async c => {

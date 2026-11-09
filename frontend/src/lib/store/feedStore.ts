@@ -31,7 +31,7 @@ interface FeedStore {
 	toggleFolderCollapsed: (folderId: string) => void;
 	updateFolderCollapsed: (folderId: string, isCollapsed: boolean) => Promise<void>;
 	fetchFolders: () => Promise<void>;
-	fetchFeeds: () => Promise<void>;
+	fetchFeeds: () => Promise<boolean>;
 	addFeed: (url: string, folderId?: string) => Promise<void>;
 	deleteFeed: (feedId: string) => Promise<void>;
 	moveFeedToFolder: (feedId: string, folderId: string | null) => Promise<void>;
@@ -55,7 +55,8 @@ export const useFeedStore = create<FeedStore>((set, get) => ({
       const response = await fetch(`/api/folders/${encodeURIComponent(folderId)}/mark-all-read`, { method: "POST", credentials: "include" });
       const result = await response.json() as { success: boolean };
       if (!response.ok || !result.success) throw new Error("标记已读失败，请重试");
-      await get().fetchFeeds();
+      const countsUpdated = await get().fetchFeeds().catch(() => false);
+      if (!countsUpdated) throw new Error("已标为已读，未读统计刷新失败，请重试");
       const refreshed = await useArticleStore.getState().fetchArticles(get().selectedSource, false);
       if (!refreshed) throw new Error("已标为已读，列表刷新失败，请重试");
     } catch (error) {
@@ -122,7 +123,9 @@ export const useFeedStore = create<FeedStore>((set, get) => ({
 	fetchFeeds: async () => {
 		const res = await fetch(`${API_BASE}/api/feeds`, { credentials: "include" });
 		const json = await res.json() as { success: boolean; data: FeedWithUnreadCount[] };
-		if (json.success) set({ feeds: json.data });
+    if (!res.ok || !json.success || !Array.isArray(json.data)) return false;
+    set({ feeds: json.data });
+    return true;
 	},
 
 	addFeed: async (url, folderId) => {

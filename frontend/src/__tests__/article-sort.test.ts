@@ -50,3 +50,9 @@ it('reports list failures instead of silently presenting an empty library and cl
   expect(await useArticleStore.getState().fetchArticles({type:'all'})).toBe(true);
   expect(useArticleStore.getState().listError).toBeNull();
 });
+it('reports partial success when folder read succeeds but unread counts fail', async () => {
+  vi.stubGlobal('fetch',vi.fn().mockResolvedValueOnce(response({folderId:'f'})).mockResolvedValueOnce(response({},false)));
+  await useFeedStore.getState().markFolderRead('f');
+  expect(useArticleStore.getState().articleActionError).toBe('已标为已读，未读统计刷新失败，请重试');
+  expect(useFeedStore.getState().markingFolderId).toBeNull();
+});

@@ -59,7 +59,11 @@ it.each(['asc','desc'])('keeps offset and cursor pages stable in %s order includ
 });
 it('marks the complete folder atomically and preserves other folders and accounts', async () => {
   for (let i = 0; i < 150; i++) db.sqlite.prepare("INSERT INTO articles(id,user_id,feed_id,title,url) VALUES (?,'owner','f','A',?)").run(`bulk-${i}`,`https://f/bulk-${i}`);
-  expect((await request('/folders/folder/mark-all-read',{},'POST')).status).toBe(200);
+  const response = await request('/folders/folder/mark-all-read',{},'POST');
+  expect(response.status).toBe(200);
+  const receipt = await response.json() as {data:{articles:{id:string;isRead:boolean;readVersion:number}[]}};
+  expect(receipt.data.articles).toHaveLength(155);
+  expect(receipt.data.articles.every(article => article.isRead && article.readVersion > 0)).toBe(true);
   expect(db.sqlite.prepare("SELECT count(*) AS n FROM articles WHERE feed_id='f' AND is_read=0").get().n).toBe(0);
   expect(db.sqlite.prepare("SELECT count(*) AS n FROM articles WHERE feed_id!='f' AND is_read=0").get().n).toBe(2);
   expect((await request('/folders/foreign/mark-all-read',{},'POST')).status).toBe(404);
