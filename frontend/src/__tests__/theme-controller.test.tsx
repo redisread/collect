@@ -25,3 +25,24 @@ it("keeps following system changes without mounting the menu controls", async ()
     document.documentElement.classList.remove("dark", "theme-switching");
   }
 });
+
+it("keeps the glass selector state aligned through rapid theme changes", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("matchMedia", () => ({ matches: true, addListener: vi.fn(), removeListener: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+  const { ThemeToggle } = await import("../components/app/common/ThemeToggle");
+  const container = document.createElement("div");
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(<ThemeToggle />));
+    for (const [label, value] of [["深色", "dark"], ["浅色", "light"], ["深色", "dark"], ["跟随系统", "system"]]) {
+      const button = Array.from(container.querySelectorAll("button")).find(item => item.textContent?.includes(label))!;
+      await act(async () => button.click());
+      expect(useUiStore.getState().theme).toBe(value);
+      expect(button.getAttribute("aria-pressed")).toBe("true");
+      expect(container.querySelectorAll('[aria-pressed="true"]')).toHaveLength(1);
+    }
+  } finally {
+    await act(async () => root.unmount());
+    vi.unstubAllGlobals();
+  }
+});

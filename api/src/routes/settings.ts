@@ -26,12 +26,13 @@ app.get("/", authMiddleware, async (c) => {
       return c.json({ success: false, error: "User not found" }, 404);
     }
 
-    const preference = await db.select({ targetLanguage: userPreferences.translationTargetLanguage, days: userPreferences.articleRetentionDays })
+    const preference = await db.select({ targetLanguage: userPreferences.translationTargetLanguage, days: userPreferences.articleRetentionDays, articleSortOrder: userPreferences.articleSortOrder })
       .from(userPreferences).where(eq(userPreferences.userId, userId)).get();
 
     return c.json({
       success: true,
       data: {
+        articleSortOrder: preference?.articleSortOrder === "asc" ? "asc" : "desc",
         articleRetentionDays: RETENTION_DAYS.includes(preference?.days as 30) ? preference!.days : 30,
         translationTargetLanguage: preference?.targetLanguage ?? DEFAULT_TARGET_LANG,
         emailDigest: {
@@ -46,6 +47,18 @@ app.get("/", authMiddleware, async (c) => {
     const errorMessage = err instanceof Error ? err.message : String(err);
     return c.json({ success: false, error: errorMessage }, 500);
   }
+});
+
+app.put("/article-sort", authMiddleware, zValidator("json", z.object({
+  articleSortOrder: z.enum(["asc", "desc"]),
+})), async c => {
+  const db = getDb(c.env.DB);
+  const userId = c.get("userId");
+  const { articleSortOrder } = c.req.valid("json");
+  await db.insert(userPreferences).values({ userId, articleSortOrder })
+    .onConflictDoUpdate({ target: userPreferences.userId,
+      set: { articleSortOrder, updatedAt: new Date().toISOString() } });
+  return c.json({ success: true, data: { articleSortOrder } });
 });
 
 app.put("/translation", authMiddleware, zValidator("json", z.object({

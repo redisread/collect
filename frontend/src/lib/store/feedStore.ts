@@ -38,12 +38,30 @@ interface FeedStore {
 	addFolder: (name: string, color?: string) => Promise<void>;
 	deleteFolder: (folderId: string) => Promise<void>;
 	renameFolder: (folderId: string, name: string) => Promise<void>;
+	markFolderRead: (folderId: string) => Promise<void>;
+  markingFolderId: string | null;
 	markFeedRead: (feedId: string) => Promise<void>;
 	setAutoExtract: (feedId: string, enabled: boolean) => Promise<void>;
 	refresh: (feedId?: string) => Promise<void>;
 }
 
 export const useFeedStore = create<FeedStore>((set, get) => ({
+  markingFolderId: null,
+  markFolderRead: async (folderId) => {
+    if (get().markingFolderId) return;
+    set({ markingFolderId: folderId });
+    useArticleStore.setState({ articleActionError: null });
+    try {
+      const response = await fetch(`/api/folders/${encodeURIComponent(folderId)}/mark-all-read`, { method: "POST", credentials: "include" });
+      const result = await response.json() as { success: boolean };
+      if (!response.ok || !result.success) throw new Error("标记已读失败，请重试");
+      await get().fetchFeeds();
+      const refreshed = await useArticleStore.getState().fetchArticles(get().selectedSource, false);
+      if (!refreshed) throw new Error("已标为已读，列表刷新失败，请重试");
+    } catch (error) {
+      useArticleStore.setState({ articleActionError: error instanceof Error ? error.message : "标记已读失败，请重试" });
+    } finally { set({ markingFolderId: null }); }
+  },
   markFeedRead: async (feedId) => {
     useArticleStore.setState({ articleActionError: null });
     try {
@@ -56,8 +74,10 @@ export const useFeedStore = create<FeedStore>((set, get) => ({
   setAutoExtract: async (feedId, enabled) => {
     try {
       const response = await fetch(`/api/feeds/${feedId}`, { method: "PUT", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ autoExtract: enabled }) });
-      if (!response.ok) throw new Error("保存失败");
-      await get().fetchFeeds();
+      const result = await response.json() as { success: boolean; data?: FeedWithUnreadCount };
+      if (!response.ok || !result.success || !result.data) throw new Error("保存失败");
+      const updated = result.data;
+      set(state => ({ feeds: state.feeds.map(feed => feed.id === feedId ? { ...feed, ...updated } : feed) }));
     } catch { useArticleStore.setState({ articleActionError: "全文提取设置保存失败，请重试" }); }
   },
 	folders: [],

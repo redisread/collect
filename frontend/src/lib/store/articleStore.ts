@@ -18,6 +18,7 @@ import type {
 export type { ArticleListItem, TranslationResult, TranslationSegment, Annotation };
 
 const API_BASE = "";
+let sortPreferenceVersion = 0;
 
 // 支持的目标语言（与 api/src/config/languages.ts 保持一致）
 export const SUPPORTED_LANGUAGES = [
@@ -40,6 +41,7 @@ export const SUPPORTED_LANGUAGES = [
 
 interface ArticleStore {
   articleActionError: string | null;
+  listError: string | null;
   pendingArticleIds: string[];
   updateArticleState: (id: string, change: Partial<Pick<Article, "isRead" | "isStarred" | "isReadLater">>) => Promise<void>;
 	articles: ArticleListItem[];
@@ -56,6 +58,9 @@ interface ArticleStore {
 	page: number;
 	hasMore: boolean;
 	sortOrder: "desc" | "asc";
+  isSavingSort: boolean;
+  loadSortOrder: () => Promise<void>;
+  saveSortOrder: (order: "asc" | "desc") => Promise<void>;
 
 	// 翻译相关状态
 	translations: Record<string, TranslationResult>;
@@ -149,6 +154,7 @@ function buildArticleUrl(source: SelectedSource, page: number, sortOrder: string
 
 export const useArticleStore = create<ArticleStore>((set, get) => ({
   articleActionError: null,
+  listError: null,
   pendingArticleIds: [],
   updateArticleState: async (id, change) => {
     if (get().pendingArticleIds.includes(id)) return;
@@ -194,6 +200,30 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 	total: 0,
 	page: 1,
 	hasMore: false,
+  isSavingSort: false,
+  loadSortOrder: async () => {
+    if (get().isSavingSort) return;
+    const version = sortPreferenceVersion;
+    const response = await fetch("/api/settings", { credentials: "include", cache: "no-store" });
+    const result = await response.json() as { success: boolean; data?: { articleSortOrder?: string } };
+    if (!response.ok || !result.success) throw new Error("无法加载排序设置");
+    if (version !== sortPreferenceVersion || get().isSavingSort) return;
+    get().setSortOrder(result.data?.articleSortOrder === "asc" ? "asc" : "desc");
+  },
+  saveSortOrder: async (articleSortOrder) => {
+    if (get().isSavingSort) return;
+    ++sortPreferenceVersion;
+    set({ isSavingSort: true, articleActionError: null });
+    try {
+      const response = await fetch("/api/settings/article-sort", { method: "PUT", credentials: "include",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify({ articleSortOrder }) });
+      const result = await response.json() as { success: boolean };
+      if (!response.ok || !result.success) throw new Error("排序保存失败，请重试");
+      get().setSortOrder(articleSortOrder);
+    } catch {
+      set({ articleActionError: "排序保存失败，请重试" });
+    } finally { set({ isSavingSort: false }); }
+  },
 	sortOrder: "desc",
 
 	// 翻译相关状态
@@ -267,7 +297,8 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 
 	fetchArticles: async (source, reset = true) => {
 		const requestId = ++articleListRequestId;
-		set({ isLoading: true });
+		set({ isLoading: true, listError: null,
+      ...(reset ? { articles: [], total: 0, page: 1, hasMore: false } : {}) });
 		try {
       const pageCount = reset ? 1 : Math.max(1, get().page);
       const selectedId = reset ? null : get().selectedArticleId;
@@ -298,6 +329,7 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
       }
 			return true;
 		} catch {
+      if (requestId === articleListRequestId) set({ listError: "文章加载失败，请检查网络后重试" });
 			return false;
 		} finally {
 			if (requestId === articleListRequestId) set({ isLoading: false });
@@ -309,7 +341,7 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 		if (isLoading || !hasMore) return;
 
 		const requestId = ++articleListRequestId;
-		set({ isLoading: true });
+		set({ isLoading: true, listError: null });
 		try {
 			const nextPage = page + 1;
 			const url = buildArticleUrl(source, nextPage, get().sortOrder, get().selectedArticleId);
@@ -318,7 +350,8 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 				success: boolean;
 				data: { articles: ArticleListItem[]; total: number };
 			};
-			if (requestId === articleListRequestId && json.success) {
+			if (!res.ok || !json.success) throw new Error("加载失败");
+			if (requestId === articleListRequestId) {
 				set((state) => ({
 					articles: Array.from(new Map([...state.articles, ...json.data.articles].map(article => [article.id, article])).values()),
 					page: nextPage,
@@ -326,6 +359,8 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
           total: json.data.total,
 				}));
 			}
+		} catch {
+      if (requestId === articleListRequestId) set({ listError: "更多文章加载失败，请重试" });
 		} finally {
 			if (requestId === articleListRequestId) set({ isLoading: false });
 		}
@@ -370,7 +405,12 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
     return get().updateArticleState(id, { isReadLater: !article?.isReadLater });
   },
 
-	setSortOrder: (sortOrder) => set({ sortOrder }),
+	setSortOrder: (sortOrder) => {
+    if (sortOrder === get().sortOrder) return;
+    ++articleListRequestId;
+    set({ sortOrder, articles: [], page: 1, hasMore: false });
+    void get().fetchArticles(useFeedStore.getState().selectedSource);
+  },
 
 	navigateArticle: async (direction) => {
 		const { selectedArticleId } = get();

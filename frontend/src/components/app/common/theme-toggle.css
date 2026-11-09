@@ -1,0 +1,52 @@
+.theme-choices {
+  display: flex;
+  padding: 5px;
+  gap: 4px;
+  border-radius: 18px;
+  background: var(--bg-card-hover);
+  box-shadow: inset 0 1px 4px #0002;
+}
+.theme-choice {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 64px;
+  min-height: 64px;
+  padding: 8px;
+  font-size: 12px;
+  border-radius: 14px;
+  color: var(--text-secondary);
+}
+.theme-choice[aria-pressed="true"] { color: var(--text-primary); }
+.theme-choice:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.theme-glass {
+  position: absolute;
+  inset: 0;
+  border: 1px solid #ffffff80;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #ffffff50, #ffffff0d);
+  backdrop-filter: blur(12px);
+  box-shadow: inset 0 1px 1px #ffffffb0, 0 3px 8px #0002;
+  overflow: hidden;
+}
+.theme-glass::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border-bottom: 2px solid #dba640;
+  box-shadow: inset 0 -4px 9px #e9b44c50;
+  animation: theme-glow 450ms ease-out both;
+}
+.theme-glass[data-theme="dark"]::after {
+  border-color: #aaaaff;
+  box-shadow: inset 0 -4px 10px #8888ff70;
+}
+.theme-symbol { position: relative; display: grid; place-items: center; width: 24px; height: 24px; font-size: 21px; }
+.moon-particle { position: absolute; width: 1.8px; height: 1.8px; background: currentColor; border-radius: 50%; }
+@keyframes theme-glow { from { transform: rotate(-35deg); opacity: .2; } to { transform: rotate(0); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .theme-glass::after { animation: none; } }

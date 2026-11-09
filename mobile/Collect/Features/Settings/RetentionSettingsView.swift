@@ -68,7 +68,7 @@ struct RetentionSettingsView: View {
       savedDays = value.days
       preview = nil
       message = "保存期限已同步"
-      try store.savePreferences(ReaderPreferences(articleRetentionDays: value.days, translationTargetLanguage: store.language))
+      try store.savePreferences(ReaderPreferences(articleRetentionDays: value.days, translationTargetLanguage: store.language, articleSortOrder: store.articleSortOrder))
     } catch { message = error.localizedDescription }
   }
 }

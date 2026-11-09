@@ -2,9 +2,9 @@ import { reorderFolders } from "../services/SubscriptionManagement";
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and, asc, inArray, isNull } from "drizzle-orm";
 import { getDb } from "../db";
-import { folders } from "../db/schema";
+import { folders, feeds, articles } from "../db/schema";
 import { authMiddleware } from "../middleware/auth";
 import type { CloudflareEnv } from "../types";
 
@@ -26,6 +26,20 @@ foldersRoute.get("/", async (c) => {
   } catch (err) {
     return c.json({ success: false, error: err instanceof Error ? err.message : "获取文件夹失败" }, 500);
   }
+});
+
+foldersRoute.post("/:id/mark-all-read", async c => {
+  const db = getDb(c.env.DB);
+  const userId = c.get("userId");
+  const folderId = c.req.param("id");
+  const folder = await db.select({ id: folders.id }).from(folders)
+    .where(and(eq(folders.id, folderId), eq(folders.userId, userId))).get();
+  if (!folder) return c.json({ success: false, error: "文件夹不存在" }, 404);
+  const folderFeeds = db.select({ id: feeds.id }).from(feeds)
+    .where(and(eq(feeds.userId, userId), eq(feeds.folderId, folderId), isNull(feeds.unsubscribedAt)));
+  await db.update(articles).set({ isRead: true }).where(and(
+    eq(articles.userId, userId), eq(articles.isRead, false), inArray(articles.feedId, folderFeeds)));
+  return c.json({ success: true, data: { folderId } });
 });
 
 foldersRoute.post("/reorder", zValidator("json", z.object({ids:z.array(z.string().min(1)).min(1).max(500).refine(ids=>new Set(ids).size===ids.length)})), async c => {

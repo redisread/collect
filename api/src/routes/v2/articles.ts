@@ -1,3 +1,4 @@
+import { articleOrder, publicationTime, readArticleOrder } from "../../lib/article-order";
 import { Hono } from "hono";
 import { eq, and, desc, asc, sql, inArray } from "drizzle-orm";
 import { zValidator } from "@hono/zod-validator";
@@ -25,10 +26,11 @@ function encodeCursor(data: { publishedAt: string | null; id: string }): string 
   return btoa(str);
 }
 
-function decodeCursor(cursor: string): { publishedAt: string; id: string } {
+function decodeCursor(cursor: string): { publishedAt: string | null; id: string } {
   try {
     const str = atob(cursor);
     const data = JSON.parse(str);
+    if ((data.p !== null && typeof data.p !== "string") || typeof data.i !== "string") throw new Error("Invalid cursor");
     return {
       publishedAt: data.p,
       id: data.i,
@@ -52,7 +54,9 @@ articlesV2Route.get("/", async (c) => {
     const filter = c.req.query("filter") as "all" | "unread" | "starred" | "read_later" | undefined;
 
     const db = getDb(c.env.DB);
-    const cache = new CacheManager(c.env.COLLECT_KV);
+    const requestedSort = c.req.query("sort");
+    const sortOrder = requestedSort === "asc" || requestedSort === "desc"
+      ? requestedSort : await readArticleOrder(db, userId);
 
     // Build base query
     let conditions = [eq(articles.userId, userId)];
@@ -62,24 +66,9 @@ articlesV2Route.get("/", async (c) => {
     }
 
     if (folderId) {
-      // Get all feeds in folder
-      const folderFeeds = await db
-        .select({ id: feeds.id })
-        .from(feeds)
+      const folderFeeds = db.select({ id: feeds.id }).from(feeds)
         .where(and(eq(feeds.folderId, folderId), eq(feeds.userId, userId)));
-
-      if (folderFeeds.length === 0) {
-        return c.json({
-          success: true,
-          data: {
-            items: [],
-            pagination: { nextCursor: null, hasMore: false },
-          },
-        });
-      }
-
-      const feedIds = folderFeeds.map((f) => f.id);
-      conditions.push(inArray(articles.feedId, feedIds));
+      conditions.push(inArray(articles.feedId, folderFeeds));
     }
 
     if (filter === "unread") {
@@ -94,9 +83,14 @@ articlesV2Route.get("/", async (c) => {
     if (cursor) {
       try {
         const decoded = decodeCursor(cursor);
-        conditions.push(
-          sql`(${articles.publishedAt}, ${articles.id}) < (${decoded.publishedAt}, ${decoded.id})`
-        );
+        const operator = sql.raw(sortOrder === "asc" ? ">" : "<");
+        const cursorTime = sql`julianday(${decoded.publishedAt})`;
+        conditions.push(sql`(
+          (${cursorTime} is not null and (${publicationTime} is null or
+            ${publicationTime} ${operator} ${cursorTime} or
+            (${publicationTime} = ${cursorTime} and ${articles.id} ${operator} ${decoded.id}))) or
+          (${cursorTime} is null and ${publicationTime} is null and ${articles.id} ${operator} ${decoded.id})
+        )`);
       } catch {
         return c.json({ success: false, error: "Invalid cursor" }, 400);
       }
@@ -122,7 +116,7 @@ articlesV2Route.get("/", async (c) => {
       })
       .from(articles)
       .where(whereClause)
-      .orderBy(desc(articles.publishedAt), desc(articles.id))
+      .orderBy(...articleOrder(sortOrder))
       .limit(limit + 1);
 
     // Build response

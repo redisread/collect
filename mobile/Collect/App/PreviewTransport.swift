@@ -12,6 +12,7 @@
     ]
     private var folders: [[String: Any]] = [["id": "test-folder", "name": "测试目录", "sortOrder": 0]]
     private var sequence: Int64 = 1
+    private var sortOrder = "desc"
 
     init(progress: Int = 0) {
       let article: [String: Any] = [
@@ -47,8 +48,21 @@
         data = [
           "cursor": sequence, "hasMore": false, "articles": changed ? articles : [],
           "feeds": changed ? feeds : [], "folders": changed ? folders : [], "deleted": [],
-          "preferences": ["articleRetentionDays": 30, "translationTargetLanguage": "zh-CN"],
+          "preferences": ["articleRetentionDays": 30, "translationTargetLanguage": "zh-CN", "articleSortOrder": sortOrder],
         ]
+      } else if path == "/api/settings/article-sort" {
+        sortOrder = fields?["articleSortOrder"] as? String ?? "desc"
+        sequence += 1
+        data = ["articleSortOrder": sortOrder]
+      } else if path.hasPrefix("/api/folders/"), path.hasSuffix("/mark-all-read") {
+        let folderID = request.url!.pathComponents.dropLast().last ?? ""
+        let ids = feeds.filter { $0["folderId"] as? String == folderID }.compactMap { $0["id"] as? String }
+        for index in articles.indices where ids.contains(articles[index]["feedId"] as? String ?? "") {
+          articles[index]["isRead"] = true
+          articles[index]["readVersion"] = (articles[index]["readVersion"] as? Int ?? 0) + 1
+        }
+        sequence += 1
+        data = ["folderId": folderID]
       } else if path == "/api/feeds/batch/move" || path == "/api/feeds/batch/unsubscribe" {
         let ids = fields?["ids"] as? [String] ?? []
         let unsubscribe = path.hasSuffix("unsubscribe")

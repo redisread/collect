@@ -1,7 +1,8 @@
 import { motion, useReducedMotion } from "framer-motion";
 import { useArticleStore, SUPPORTED_LANGUAGES } from "@/lib/store/articleStore";
 import type { Article } from "@/lib/types";
-import { useEffect, useId, useRef } from "react";
+import { useFeedStore } from "@/lib/store/feedStore";
+import { useEffect, useId, useRef, useState } from "react";
 import { escapeHtml } from "@/lib/utils/sanitize";
 import { useAiSettingsStore } from "@/lib/store/aiSettingsStore";
 
@@ -11,6 +12,10 @@ interface ArticleToolbarProps {
 }
 
 export function ArticleToolbar({ article, onOpenNotes }: ArticleToolbarProps) {
+  const { feeds, setAutoExtract } = useFeedStore();
+  const feed = feeds.find(item => item.id === article.feedId);
+  const [savingFeed, setSavingFeed] = useState(false);
+  const { articleActionError } = useArticleStore();
   const reduceMotion = useReducedMotion();
   const {
     toggleStarred, toggleReadLater, translateArticle, translateFullArticle, isTranslating,
@@ -60,6 +65,7 @@ export function ArticleToolbar({ article, onOpenNotes }: ArticleToolbarProps) {
         <button ref={trigger} popoverTarget={menuId} aria-label="更多文章操作"
           aria-haspopup="menu" className={buttonClass}>•••</button>
       </div>
+      {articleActionError && <p role="alert" className="text-sm">{articleActionError}</p>}
       <p className="mt-1 break-words text-xs text-[var(--text-tertiary)]">翻译服务 · {providerName}</p>
       <div ref={menu} id={menuId} popover="auto" role="menu" aria-label="文章操作"
         className="article-actions rounded-xl border border-[var(--border)] bg-[var(--bg-main)] p-1.5 text-[var(--text-primary)] shadow-[var(--shadow-md)]"
@@ -79,6 +85,16 @@ export function ArticleToolbar({ article, onOpenNotes }: ArticleToolbarProps) {
           }
           if (event.key === "Escape") { event.preventDefault(); closeMenu(); }
         }}>
+        {feed && <button role="menuitem" className={buttonClass + " w-full text-left"}
+          disabled={savingFeed || feed.autoExtract}
+          onClick={async () => {
+            setSavingFeed(true);
+            useArticleStore.setState({ articleActionError: null });
+            try { await setAutoExtract(feed.id, true); } finally { setSavingFeed(false); }
+          }}>
+          {savingFeed ? "正在保存…" : feed.autoExtract ? "已启用自动抓取原文" : "为此订阅源自动抓取原文"}
+          <span className="block text-xs text-[var(--text-secondary)]">{feed.title}</span>
+        </button>}
         <button role="menuitem" className={buttonClass + " w-full text-left"}
           onClick={() => { void toggleReadLater(article.id); closeMenu(); }}>
           {article.isReadLater ? "移出稍后读" : "稍后读"}

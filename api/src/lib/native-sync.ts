@@ -40,6 +40,7 @@ export async function nativeSyncPage(db: DB, userId: string, after: number) {
     const row = await db.select().from(userPreferences).where(eq(userPreferences.userId, userId)).get();
     preferences = {
       articleRetentionDays: RETENTION_DAYS.includes(row?.articleRetentionDays as 30) ? row!.articleRetentionDays : 30,
+      articleSortOrder: row?.articleSortOrder === "asc" ? "asc" : "desc",
       translationTargetLanguage: row?.translationTargetLanguage ?? DEFAULT_TARGET_LANG,
     };
   }

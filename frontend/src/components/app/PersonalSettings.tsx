@@ -1,3 +1,5 @@
+import { ThemeToggle } from "./common/ThemeToggle";
+import { ArticleSortSettings } from "./ArticleSortSettings";
 import { ProfileSettings } from "./ProfileSettings";
 import { RetentionSettings } from "./RetentionSettings";
 import { useEffect, useRef, useState } from "react";
@@ -62,7 +64,7 @@ export function PersonalSettings() {
       </nav>
       <div className="min-w-0">
       <div hidden={tab !== "profile"}><ProfileSettings /></div>
-      <div hidden={tab !== "reading"}><RetentionSettings /></div>
+      <div hidden={tab !== "reading"}><section className="mb-8 max-w-sm"><h2 className="mb-3 font-medium">外观</h2><ThemeToggle /></section><ArticleSortSettings /><RetentionSettings /></div>
       <div hidden={tab !== "ai"}>
       <form id="translation-preferences" onSubmit={save} className="scroll-mt-5 border-t border-[var(--border-light)] pt-7">
         <label htmlFor="translation-language" className="block text-base font-medium">翻译目标语言</label>
