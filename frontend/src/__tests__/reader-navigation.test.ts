@@ -123,3 +123,20 @@ it("discards translation started on the retained article while the next detail l
   expect(useArticleStore.getState().selectedArticleId).toBe('b');
   expect(useArticleStore.getState().translationError).toBeNull();
 });
+it("invalidates translation preparation awaiting preferences when navigation commits", async () => {
+  await useArticleStore.getState().selectArticle('a');
+  useArticleStore.setState({ selectedArticle: {...article('a'),content:null} });
+  let finishDetail!: (response: Response) => void;
+  let finishPreference!: (language: string) => void;
+  fetchMock.mockImplementationOnce(() => new Promise(resolve => { finishDetail = resolve; }));
+  vi.spyOn(useArticleStore.getState(), 'loadTargetLanguage').mockImplementationOnce(() => new Promise(resolve => { finishPreference = resolve; }));
+  const navigation = useArticleStore.getState().navigateArticle('next');
+  const translation = useArticleStore.getState().translateFullArticle();
+  finishDetail(ok(article('b')));
+  await navigation;
+  finishPreference('zh-CN');
+  expect(await translation).toBe(false);
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+  expect(useArticleStore.getState().isExtracting).toBe(false);
+  expect(useArticleStore.getState().selectedArticleId).toBe('b');
+});

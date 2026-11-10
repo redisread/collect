@@ -453,6 +453,7 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
         if (context === "sequence") {
           browserTranslationController?.abort();
           aiTranslationController?.abort();
+          ++detailRequestId;
           ++translationRequestId;
           ++extractionRequestId;
         }
