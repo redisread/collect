@@ -1,4 +1,4 @@
-import { articleOrder, publicationTime, readArticleOrder } from "../../lib/article-order";
+import { afterArticle, articleOrder, readArticleOrder } from "../../lib/article-order";
 import { Hono } from "hono";
 import { eq, and, desc, asc, sql, inArray } from "drizzle-orm";
 import { zValidator } from "@hono/zod-validator";
@@ -83,14 +83,7 @@ articlesV2Route.get("/", async (c) => {
     if (cursor) {
       try {
         const decoded = decodeCursor(cursor);
-        const operator = sql.raw(sortOrder === "asc" ? ">" : "<");
-        const cursorTime = sql`julianday(${decoded.publishedAt})`;
-        conditions.push(sql`(
-          (${cursorTime} is not null and (${publicationTime} is null or
-            ${publicationTime} ${operator} ${cursorTime} or
-            (${publicationTime} = ${cursorTime} and ${articles.id} ${operator} ${decoded.id}))) or
-          (${cursorTime} is null and ${publicationTime} is null and ${articles.id} ${operator} ${decoded.id})
-        )`);
+        conditions.push(afterArticle(sortOrder, decoded));
       } catch {
         return c.json({ success: false, error: "Invalid cursor" }, 400);
       }

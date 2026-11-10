@@ -1,4 +1,4 @@
-import { articleOrder, readArticleOrder } from "../lib/article-order";
+import { afterArticle, articleOrder, readArticleOrder } from "../lib/article-order";
 import { automaticallyExtract } from "../lib/automatic-extraction";
 import { articleExpiry } from "../lib/article-retention";
 import { Hono } from "hono";
@@ -82,9 +82,17 @@ articlesRoute.get("/", async (c) => {
       conditions.push(includeId ? or(eq(articles.isRead, false), eq(articles.id, includeId))! : eq(articles.isRead, false));
     }
 
+    const after = c.req.query("after");
+    if (after) {
+      let cursor;
+      try {
+        cursor = z.object({ id: z.string().min(1), publishedAt: z.string().nullable() }).parse(JSON.parse(after));
+      } catch { return c.json({ success: false, error: "无效的文章游标" }, 400); }
+      conditions.push(afterArticle(sortOrder, cursor));
+    }
     const where = and(...conditions);
     const orderBy = articleOrder(sortOrder);
-    const offset = (page - 1) * pageSize;
+    const offset = after ? 0 : (page - 1) * pageSize;
 
     const [articleList, countResult] = await Promise.all([
       db

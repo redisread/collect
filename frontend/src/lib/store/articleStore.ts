@@ -19,6 +19,8 @@ export type { ArticleListItem, TranslationResult, TranslationSegment, Annotation
 
 const API_BASE = "";
 let sortPreferenceVersion = 0;
+let readingSessionId = 0;
+let readingPageRequest: { sessionId: number; promise: Promise<boolean> } | null = null;
 
 // 支持的目标语言（与 api/src/config/languages.ts 保持一致）
 export const SUPPORTED_LANGUAGES = [
@@ -39,7 +41,23 @@ export const SUPPORTED_LANGUAGES = [
 	{ code: "th", label: "ไทย" },
 ] as const;
 
+interface ReadingSession {
+  id: number;
+  items: ArticleListItem[];
+  source: SelectedSource;
+  sortOrder: "asc" | "desc";
+  hideRead: boolean;
+  hasMore: boolean;
+}
+
 interface ArticleStore {
+  readingSession: ReadingSession | null;
+  isNavigating: boolean;
+  navigationMessage: string | null;
+  navigationRetry: "next" | "prev" | null;
+  readingPageError: string | null;
+  loadReadingPage: () => Promise<boolean>;
+
   articleActionError: string | null;
   listError: string | null;
   pendingArticleIds: string[];
@@ -92,7 +110,7 @@ interface ArticleStore {
 	// 方法
 	fetchArticles: (source: SelectedSource, reset?: boolean) => Promise<boolean>;
 	fetchMoreArticles: (source: SelectedSource) => Promise<void>;
-	selectArticle: (articleId: string | null) => Promise<void>;
+	selectArticle: (articleId: string | null, context?: "sequence" | "search") => Promise<void>;
 	markRead: (articleId: string, isRead: boolean) => Promise<void>;
 	toggleRead: (articleId: string) => Promise<void>;
 	toggleStarred: (articleId: string) => Promise<void>;
@@ -132,7 +150,7 @@ export function isSavedGroup(source: SelectedSource): boolean {
   return source.type === "starred" || source.type === "read_later";
 }
 
-function buildArticleUrl(source: SelectedSource, page: number, sortOrder: string, includeId?: string | null): string {
+function buildArticleUrl(source: SelectedSource, page: number, sortOrder: string, includeId?: string | null, hideRead = useUiStore.getState().hideRead): string {
 	const params = new URLSearchParams({
 		page: String(page),
 		pageSize: String(PAGE_SIZE),
@@ -145,7 +163,7 @@ function buildArticleUrl(source: SelectedSource, page: number, sortOrder: string
 	else if (source.type === "starred") params.set("filter", "starred");
 	else if (source.type === "read_later") params.set("filter", "read_later");
 
-	if (useUiStore.getState().hideRead && !isSavedGroup(source)) {
+	if (hideRead && !isSavedGroup(source)) {
     params.set("hideRead", "true");
     if (includeId) params.set("includeId", includeId);
   }
@@ -153,6 +171,41 @@ function buildArticleUrl(source: SelectedSource, page: number, sortOrder: string
 }
 
 export const useArticleStore = create<ArticleStore>((set, get) => ({
+  readingSession: null,
+  isNavigating: false,
+  navigationMessage: null,
+  navigationRetry: null,
+  readingPageError: null,
+  loadReadingPage: () => {
+    const session = get().readingSession;
+    if (!session?.hasMore) return Promise.resolve(true);
+    if (readingPageRequest?.sessionId === session.id) return readingPageRequest.promise;
+    const last = session.items.at(-1);
+    if (!last) return Promise.resolve(false);
+    set({ readingPageError: null });
+    const promise = (async () => {
+      try {
+        const url = new URL(buildArticleUrl(session.source, 1, session.sortOrder, null, session.hideRead), "https://collect.invalid");
+        url.searchParams.set("after", JSON.stringify({ id: last.id, publishedAt: last.publishedAt ?? null }));
+        const response = await fetch(url.pathname + url.search, { credentials: "include", signal: AbortSignal.timeout(15_000) });
+        const result = await response.json() as { success: boolean; data: { articles: ArticleListItem[]; total: number } };
+        if (!response.ok || !result.success) throw new Error("加载失败");
+        if (get().readingSession?.id !== session.id) return false;
+        set({ readingSession: { ...session,
+          items: [...session.items, ...result.data.articles.filter(item => !session.items.some(existing => existing.id === item.id))],
+          hasMore: result.data.total > result.data.articles.length,
+        } });
+        return true;
+      } catch {
+        if (get().readingSession?.id === session.id) set({ readingPageError: "后续文章加载失败，请重试" });
+        return false;
+      } finally {
+        if (readingPageRequest?.sessionId === session.id) readingPageRequest = null;
+      }
+    })();
+    readingPageRequest = { sessionId: session.id, promise };
+    return promise;
+  },
   articleActionError: null,
   listError: null,
   pendingArticleIds: [],
@@ -297,8 +350,9 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 
 	fetchArticles: async (source, reset = true) => {
 		const requestId = ++articleListRequestId;
+    if (reset) ++detailRequestId;
 		set({ isLoading: true, listError: null,
-      ...(reset ? { articles: [], total: 0, page: 1, hasMore: false } : {}) });
+      ...(reset ? { articles: [], total: 0, page: 1, hasMore: false, readingSession: null, isNavigating: false, navigationMessage: null, navigationRetry: null, readingPageError: null } : {}) });
 		try {
       const pageCount = reset ? 1 : Math.max(1, get().page);
       const selectedId = reset ? null : get().selectedArticleId;
@@ -366,13 +420,24 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 		}
 	},
 
-	selectArticle: async (articleId) => {
+	selectArticle: async (articleId, context) => {
+    const previous = get();
+    if (context !== "sequence" && (articleId !== previous.selectedArticleId || !previous.readingSession)) {
+      const source = useFeedStore.getState().selectedSource;
+      const items = context === "search" ? previous.searchResults : previous.articles.filter(item =>
+        isSavedGroup(source) || !useUiStore.getState().hideRead || !item.isRead || item.id === articleId);
+      set({ readingSession: articleId ? { id: ++readingSessionId, items: [...items], source,
+        sortOrder: previous.sortOrder, hideRead: useUiStore.getState().hideRead,
+        hasMore: context !== "search" && previous.hasMore && items.some(item => item.id === articleId),
+      } : null, navigationMessage: null, navigationRetry: null, readingPageError: null, isNavigating: false });
+    }
+    if (!articleId) set({ readingSession: null, navigationMessage: null, navigationRetry: null, isNavigating: false });
 		browserTranslationController?.abort();
 		aiTranslationController?.abort();
 		const requestId = ++detailRequestId;
 		++translationRequestId;
 		++extractionRequestId;
-		set({ selectedArticleId: articleId, selectedArticle: null, isLoadingDetail: !!articleId,
+		set({ ...(context === "sequence" ? {} : { selectedArticleId: articleId, selectedArticle: null }), isLoadingDetail: context !== "sequence" && !!articleId,
 			detailError: null, translationError: null, translationFallback: null, extractionError: null,
 			isTranslating: false, isPausingTranslation: false, aiProgress: null, isExtracting: false, annotations: [] });
 		if (!articleId) return;
@@ -382,14 +447,21 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 			});
 			const json = await res.json() as { success: boolean; data: Article };
 			if (!res.ok || !json.success) throw new Error("文章加载失败，请重试");
-			if (requestId === detailRequestId && get().selectedArticleId === articleId) {
-				set(state => ({ selectedArticle: json.data,
+			if (requestId === detailRequestId) {
+        if (context === "sequence" && get().readingSession?.id !== previous.readingSession?.id) return;
+				set(state => ({ selectedArticleId: articleId, selectedArticle: json.data,
 					articles: state.articles.map(article => article.id === articleId ? { ...article, isRead: true } : article) }));
-				void get().restoreAiTranslation();
+				const session = get().readingSession;
+        const index = session?.items.findIndex(item => item.id === articleId) ?? -1;
+        if (session && index >= session.items.length - 4 && !get().readingPageError) void get().loadReadingPage();
+        void get().restoreAiTranslation();
 				void useFeedStore.getState().fetchFeeds().catch(() => set({ articleActionError: "文章已打开，订阅数量同步失败，请刷新页面" }));
 			}
 		} catch {
-			if (requestId === detailRequestId && get().selectedArticleId === articleId) set({ detailError: "文章加载失败，请重试" });
+			if (requestId === detailRequestId) {
+        if (context === "sequence") set({ navigationMessage: "文章加载失败，请重试" });
+        else if (get().selectedArticleId === articleId) set({ detailError: "文章加载失败，请重试" });
+      }
 		} finally {
 			if (requestId === detailRequestId) set({ isLoadingDetail: false });
 		}
@@ -412,23 +484,40 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
     void get().fetchArticles(useFeedStore.getState().selectedSource);
   },
 
-	navigateArticle: async (direction) => {
-		const { selectedArticleId } = get();
-		const articles = get().articles.filter(article => isSavedGroup(useFeedStore.getState().selectedSource) || !useUiStore.getState().hideRead || !article.isRead || article.id === selectedArticleId);
-		if (articles.length === 0) return;
-
-		const currentIndex = articles.findIndex((a) => a.id === selectedArticleId);
-		let nextIndex: number;
-
-		if (direction === "next") {
-			nextIndex = currentIndex < articles.length - 1 ? currentIndex + 1 : 0;
-		} else {
-			nextIndex = currentIndex > 0 ? currentIndex - 1 : articles.length - 1;
-		}
-
-		const nextArticle = articles[nextIndex];
-		if (nextArticle) await get().selectArticle(nextArticle.id);
-	},
+  navigateArticle: async (direction) => {
+    const initial = get();
+    if (initial.isNavigating || initial.isLoadingDetail) return;
+    if (!initial.selectedArticleId) {
+      const first = initial.articles.find(item => !useUiStore.getState().hideRead || !item.isRead || isSavedGroup(useFeedStore.getState().selectedSource));
+      if (first) await get().selectArticle(first.id);
+      return;
+    }
+    const session = initial.readingSession;
+    if (!session) return;
+    const index = session.items.findIndex(item => item.id === initial.selectedArticleId);
+    if (index < 0) return;
+    set({ isNavigating: true, navigationMessage: null, navigationRetry: null });
+    try {
+      if (direction === "next" && index === session.items.length - 1 && session.hasMore) {
+        const loaded = await get().loadReadingPage();
+        if (get().readingSession?.id !== session.id) return;
+        if (!loaded) {
+          set({ navigationMessage: "后续文章加载失败，请重试", navigationRetry: direction });
+          return;
+        }
+      }
+      if (get().readingSession?.id !== session.id) return;
+      const target = get().readingSession?.items[index + (direction === "next" ? 1 : -1)];
+      if (!target) {
+        set({ navigationMessage: direction === "next" ? "已经是最后一篇" : "已经是第一篇" });
+        return;
+      }
+      await get().selectArticle(target.id, "sequence");
+      if (get().readingSession?.id === session.id && get().selectedArticleId !== target.id) set({ navigationRetry: direction });
+    } finally {
+      if (get().readingSession?.id === session.id) set({ isNavigating: false });
+    }
+  },
 
 	translateFullArticle: async () => {
 		const { selectedArticle, isExtracting, isTranslating, isLoadingPreference } = get();

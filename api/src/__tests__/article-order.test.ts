@@ -78,3 +78,27 @@ it('lists articles for accounts and folders with more than 100 subscriptions', a
     expect(result.status).toBe(200);
   }
 });
+
+it.each(['asc', 'desc'])('continues unread reading after a cursor without skipping when earlier items become read (%s)', async sort => {
+  const expected = sort === 'asc' ? ['a','b','c','d','e'] : ['c','b','a','e','d'];
+  const ids: string[] = [];
+  let after: string | null = null;
+  do {
+    const query = new URLSearchParams({ folderId: 'folder', sort, hideRead: 'true', pageSize: '2' });
+    if (after) query.set('after', after);
+    const response = await app.request(`https://test/articles?${query}`, {}, env);
+    expect(response.status).toBe(200);
+    const result = await response.json() as {data:{articles:{id:string;publishedAt:string|null}[];total:number}};
+    ids.push(...result.data.articles.map(item => item.id));
+    for (const item of result.data.articles) db.sqlite.prepare('UPDATE articles SET is_read=1 WHERE id=?').run(item.id);
+    const last = result.data.articles.at(-1);
+    after = last && result.data.total > result.data.articles.length ? JSON.stringify({id:last.id,publishedAt:last.publishedAt}) : null;
+  } while (after);
+  expect(ids).toEqual(expected);
+});
+it('rejects malformed reading cursors and preserves feed ownership', async () => {
+  expect((await app.request('https://test/articles?after=broken', {}, env)).status).toBe(400);
+  const query = new URLSearchParams({ feedId: 'x', after: JSON.stringify({id:'a',publishedAt:null}) });
+  const result = await (await app.request(`https://test/articles?${query}`, {}, env)).json() as {data:{articles:unknown[]}};
+  expect(result.data.articles).toEqual([]);
+});

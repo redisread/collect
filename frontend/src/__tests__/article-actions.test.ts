@@ -75,9 +75,11 @@ it.each(["starred", "read_later"] as const)("navigates visible read articles in 
   const articles = [{id:"a",isRead:true}, {id:"b",isRead:true}] as Article[];
   useUiStore.setState({ hideRead: true });
   useFeedStore.setState({ selectedSource: { type } });
-  useArticleStore.setState({ articles, selectedArticleId: "a" });
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ success: true, data: articles[0] })));
+  useArticleStore.setState({ articles, selectedArticleId: null, readingSession: null, hasMore: false });
+  await useArticleStore.getState().selectArticle("a");
   const select = vi.spyOn(useArticleStore.getState(), "selectArticle").mockResolvedValue();
   await useArticleStore.getState().navigateArticle("next");
-  expect(select).toHaveBeenCalledWith("b");
+  expect(select).toHaveBeenCalledWith("b", "sequence");
   select.mockRestore();
 });

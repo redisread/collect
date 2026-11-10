@@ -1,5 +1,7 @@
+import { useReaderSwipe } from "./useReaderSwipe";
+import { useReducedMotion } from "framer-motion";
 import { hasMatchingLeadImage } from "@/lib/utils/article-image";
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useArticleStore } from "@/lib/store/articleStore";
 import { useFeedStore } from "@/lib/store/feedStore";
 import type { TextRange } from "@/lib/types";
@@ -62,6 +64,7 @@ function getElementByXPath(xpath: string, context: Node): Node | null {
 
 export function ArticleReader() {
 	const {
+    readingSession, navigateArticle, isNavigating, navigationMessage, navigationRetry, readingPageError, loadReadingPage,
 		selectedArticle,
 		selectedArticleId,
 		selectArticle,
@@ -82,7 +85,16 @@ export function ArticleReader() {
 	const { feeds } = useFeedStore();
 	const contentRef = useRef<HTMLDivElement>(null);
 	const articleContentRef = useRef<HTMLDivElement>(null);
-	const [viewMode, setViewMode] = useState<ViewMode>("original");
+	const sessionId = readingSession?.id ?? 0;
+  const positionKey = `${sessionId}:${selectedArticle?.id ?? ""}`;
+  const [views, setViews] = useState<Record<string, ViewMode>>({});
+  const viewMode = views[positionKey] ?? "original";
+  const setViewMode = useCallback((value: ViewMode | ((previous: ViewMode) => ViewMode)) => {
+    setViews(previous => ({ ...previous, [positionKey]: typeof value === "function" ? value(previous[positionKey] ?? "original") : value }));
+  }, [positionKey]);
+  const positions = useRef<Record<string, number>>({});
+  const restoringPosition = useRef<string | null>(null);
+  const reduceMotion = useReducedMotion();
 	const viewArticleId = useRef<string | undefined>(undefined);
 
 	// 标注相关状态
@@ -100,17 +112,49 @@ export function ArticleReader() {
 
 	// 切换文章时重置视图模式
 	useEffect(() => {
-		setViewMode("original");
 		setHighlightToolbar({ visible: false, position: { top: 0, left: 0 }, selectedRange: null });
 		setNotesSidebarOpen(false);
 	}, [selectedArticle?.id]);
 
-	// 切换文章时滚动到顶部
-	useEffect(() => {
-		if (contentRef.current) {
-			contentRef.current.scrollTop = 0;
-		}
-	}, [selectedArticle?.id]);
+  useEffect(() => { positions.current = {}; setViews({}); }, [sessionId]);
+  useLayoutEffect(() => {
+    const element = contentRef.current;
+    if (!element || !selectedArticle) return;
+    const top = positions.current[positionKey] ?? 0;
+    restoringPosition.current = positionKey;
+    let active = true;
+    const restore = () => {
+      if (!active) return;
+      element.scrollTop = top;
+      if (Math.abs(element.scrollTop - top) < 1) {
+        active = false;
+        restoringPosition.current = null;
+      }
+    };
+    const stop = () => {
+      active = false;
+      restoringPosition.current = null;
+      positions.current[positionKey] = element.scrollTop;
+    };
+    restore();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(restore);
+    if (element.firstElementChild) observer?.observe(element.firstElementChild);
+    element.addEventListener("load", restore, true);
+    element.addEventListener("touchstart", stop, { passive: true });
+    element.addEventListener("wheel", stop, { passive: true });
+    element.addEventListener("keydown", stop);
+    return () => {
+      active = false;
+      restoringPosition.current = null;
+      observer?.disconnect();
+      element.removeEventListener("load", restore, true);
+      element.removeEventListener("touchstart", stop);
+      element.removeEventListener("wheel", stop);
+      element.removeEventListener("keydown", stop);
+    };
+  }, [selectedArticle?.id, positionKey, viewMode]);
+  const swipe = useReaderSwipe(contentRef, selectedArticle?.id,
+    isNavigating || isLoadingDetail || highlightToolbar.visible || noteDialogOpen || notesSidebarOpen, navigateArticle);
 
 	// 加载标注
 	useEffect(() => {
@@ -292,7 +336,7 @@ export function ArticleReader() {
 	useEffect(() => {
 		const changedArticle = viewArticleId.current !== selectedArticle?.id;
 		viewArticleId.current = selectedArticle?.id;
-		setViewMode(!changedArticle && hasTranslation ? "both" : "original");
+		if (!changedArticle && hasTranslation) setViewMode("both");
 	}, [hasTranslation, translationKey, translationViewRequest, selectedArticle?.id]);
 
 	if (detailError) return (
@@ -330,14 +374,28 @@ export function ArticleReader() {
 
 			<div className="flex min-h-0 min-w-0 flex-col h-full">
 				{/* 阅读进度条 */}
-				{hasContent && <ReadingProgress contentRef={contentRef} articleId={selectedArticle.id} />}
+				{hasContent && <ReadingProgress contentRef={contentRef} articleId={selectedArticle.id} restoreSavedPosition={false} />}
 
 				{/* 工具栏 */}
 				<ArticleToolbar key={selectedArticle.id} article={selectedArticle} onOpenNotes={() => setNotesSidebarOpen(true)} />
 
+        <nav aria-label="文章切换" className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-light)] px-4 py-1">
+          <button className="min-h-11 rounded-lg px-3 text-sm disabled:opacity-40" disabled={isNavigating}
+            onClick={() => void navigateArticle("prev")}>← 上一篇</button>
+          <span role="status" aria-live="polite" className="text-xs text-[var(--text-secondary)]">
+            {isNavigating ? "正在加载文章…" : navigationMessage ?? readingPageError}
+          </span>
+          {(navigationRetry || readingPageError) && !isNavigating && <button className="min-h-11 rounded-lg px-3 text-sm text-[var(--accent)]"
+            onClick={() => { if (navigationRetry) void navigateArticle(navigationRetry); else void loadReadingPage(); }}>重试</button>}
+          <button className="min-h-11 rounded-lg px-3 text-sm disabled:opacity-40" disabled={isNavigating}
+            onClick={() => void navigateArticle("next")}>下一篇 →</button>
+        </nav>
 				{/* 正文区域 */}
-				<div ref={contentRef} className="min-h-0 flex-1 overflow-y-auto relative">
-					<article className="max-w-[680px] mx-auto px-6 py-8 animate-fade-in">
+				<div ref={contentRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden relative"
+            onScroll={event => { if (restoringPosition.current !== positionKey) positions.current[positionKey] = event.currentTarget.scrollTop; }}>
+					<article className="max-w-[680px] mx-auto px-6 py-8"
+              style={{ transform: reduceMotion ? undefined : `translateX(${swipe.offset}px)`,
+                transition: reduceMotion || swipe.dragging ? "none" : "transform 160ms ease-out" }}>
 						{!selectedArticle.isStarred && !selectedArticle.isReadLater && selectedArticle.expiresAt && <p className="mb-3 text-xs text-[var(--text-tertiary)]">预计清理日期 {selectedArticle.expiresAt.slice(0, 10)}</p>}
             {/* 来源信息 */}
 						<div className="flex items-center gap-2 mb-4">
