@@ -17,7 +17,7 @@ export function useReaderSwipe(ref: RefObject<HTMLDivElement | null>, articleId:
       const touch = event.touches[0];
       if (touch.clientX < 28 || touch.clientX > window.innerWidth - 28) return;
       let target = event.target instanceof Element ? event.target : null;
-      if (target?.closest("a, button, input, textarea, select, [contenteditable], [role=tablist], pre, table, img, video, audio, iframe, .annotation-highlight")) return;
+      if (target?.closest("a, button, input, textarea, select, summary, [contenteditable], [role=tablist], pre, table, img, video, audio, iframe, .annotation-highlight")) return;
       while (target && target !== element) {
         if (target.scrollWidth > target.clientWidth + 1 && /auto|scroll/.test(getComputedStyle(target).overflowX)) return;
         target = target.parentElement;

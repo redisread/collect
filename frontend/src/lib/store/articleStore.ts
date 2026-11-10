@@ -422,7 +422,7 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 
 	selectArticle: async (articleId, context) => {
     const previous = get();
-    if (context !== "sequence" && (articleId !== previous.selectedArticleId || !previous.readingSession)) {
+    if (context !== "sequence" && (!articleId || context === "search" || articleId !== previous.selectedArticleId || !previous.readingSession)) {
       const source = useFeedStore.getState().selectedSource;
       const items = context === "search" ? previous.searchResults : previous.articles.filter(item =>
         isSavedGroup(source) || !useUiStore.getState().hideRead || !item.isRead || item.id === articleId);
@@ -431,7 +431,6 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
         hasMore: context !== "search" && previous.hasMore && items.some(item => item.id === articleId),
       } : null, navigationMessage: null, navigationRetry: null, readingPageError: null, isNavigating: false });
     }
-    if (!articleId) set({ readingSession: null, navigationMessage: null, navigationRetry: null, isNavigating: false });
 		browserTranslationController?.abort();
 		aiTranslationController?.abort();
 		const requestId = ++detailRequestId;

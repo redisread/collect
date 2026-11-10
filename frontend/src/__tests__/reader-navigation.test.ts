@@ -99,3 +99,10 @@ it("keeps a failed page retryable and ignores its response after leaving the rea
   expect(useArticleStore.getState().readingSession).toBeNull();
   expect(useArticleStore.getState().selectedArticleId).toBeNull();
 });
+it("starts the search result sequence even when its first article is already open", async () => {
+  await useArticleStore.getState().selectArticle('a');
+  useArticleStore.setState({ searchResults: [article('a'), article('search-only')] });
+  await useArticleStore.getState().selectArticle('a', 'search');
+  await useArticleStore.getState().navigateArticle('next');
+  expect(useArticleStore.getState().selectedArticleId).toBe('search-only');
+});

@@ -198,6 +198,12 @@ body {
 	font-size: var(--font-size-sm);
 }
 
+.article-content table {
+	display: block;
+	max-width: 100%;
+	overflow-x: auto;
+}
+
 .article-content code {
 	background: var(--bg-card-hover);
 	border-radius: var(--radius-sm);
