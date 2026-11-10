@@ -448,7 +448,17 @@ export const useArticleStore = create<ArticleStore>((set, get) => ({
 			if (!res.ok || !json.success) throw new Error("文章加载失败，请重试");
 			if (requestId === detailRequestId) {
         if (context === "sequence" && get().readingSession?.id !== previous.readingSession?.id) return;
+        // The old article stays interactive while the next detail loads. Invalidate
+        // any work started there during that interval before committing the switch.
+        if (context === "sequence") {
+          browserTranslationController?.abort();
+          aiTranslationController?.abort();
+          ++translationRequestId;
+          ++extractionRequestId;
+        }
 				set(state => ({ selectedArticleId: articleId, selectedArticle: json.data,
+          isTranslating: false, isPausingTranslation: false, aiProgress: null, isExtracting: false,
+          translationError: null, translationFallback: null, extractionError: null,
 					articles: state.articles.map(article => article.id === articleId ? { ...article, isRead: true } : article) }));
 				const session = get().readingSession;
         const index = session?.items.findIndex(item => item.id === articleId) ?? -1;

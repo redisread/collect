@@ -106,3 +106,20 @@ it("starts the search result sequence even when its first article is already ope
   await useArticleStore.getState().navigateArticle('next');
   expect(useArticleStore.getState().selectedArticleId).toBe('search-only');
 });
+it("discards translation started on the retained article while the next detail loads", async () => {
+  await useArticleStore.getState().selectArticle('a');
+  let finishDetail!: (response: Response) => void;
+  let finishTranslation!: (response: Response) => void;
+  fetchMock.mockImplementationOnce(() => new Promise(resolve => { finishDetail = resolve; }))
+    .mockImplementationOnce(() => new Promise(resolve => { finishTranslation = resolve; }));
+  const navigation = useArticleStore.getState().navigateArticle('next');
+  const translation = useArticleStore.getState().translateArticle('a', '<p>New text</p>', 'zh-CN', null);
+  expect(useArticleStore.getState().isTranslating).toBe(true);
+  finishDetail(ok(article('b')));
+  await navigation;
+  expect(useArticleStore.getState().isTranslating).toBe(false);
+  finishTranslation(Response.json({success:false,error:'Old translation failed'}, {status:500}));
+  await translation;
+  expect(useArticleStore.getState().selectedArticleId).toBe('b');
+  expect(useArticleStore.getState().translationError).toBeNull();
+});
