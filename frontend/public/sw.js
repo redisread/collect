@@ -1,6 +1,6 @@
 const CACHE_NAME = "collect-public-__BUILD_ID__";
 const PUBLIC_FILES = [
-  "/offline", "/collect.svg", "/manifest.webmanifest",
+  "/offline", "/collect.svg", "/collect-logo.png", "/manifest.webmanifest",
   "/icons/collect-192.png", "/icons/collect-512.png", "/icons/apple-touch-icon.png",
 ];
 

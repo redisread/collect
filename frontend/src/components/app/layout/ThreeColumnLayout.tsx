@@ -110,7 +110,7 @@ export function ThreeColumnLayout() {
 						</div>
 					</details>
 				</> : <>
-					<img src="/collect.svg" width="24" height="24" alt="" />
+					<img src="/collect-logo.png" width="24" height="24" alt="" />
 					<span className="me-auto text-sm font-semibold">Collect</span>
 					<button className="min-h-11 rounded-lg px-2 text-sm" aria-expanded={showSources} onClick={() => setShowSources(!showSources)}>订阅源</button>
 					<a href="/settings" onClick={navigateWithinReader} className="flex min-h-11 items-center rounded-lg px-2 text-sm hover:bg-[var(--bg-card-hover)]">个人设置</a>
