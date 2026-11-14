@@ -1,8 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="16" fill="#F3CD54"/>
-  <g fill="none" stroke="#302A1D" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M14 28c7-2 13 0 18 5 5-5 11-7 18-5v18c-7-2-13 0-18 5-5-5-11-7-18-5Z"/>
-    <path d="M32 33v18M23 20h18"/>
-    <path d="M27 20a5 5 0 0 1 10 0"/>
-  </g>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><title>Collect 松鼠标志</title><path fill="#E78A16" fill-rule="evenodd" d="M124 208 C66 224 24 186 24 126 C24 68 56 32 96 32 C124 32 144 52 144 78 C144 104 124 122 100 122 C84 122 72 112 72 98 C72 86 80 78 92 78 C84 96 108 102 116 86 C126 64 98 50 78 66 C50 90 54 152 88 170 C92 148 108 132 132 124 L156 62 L173.32 92 C190 94 202 106 202 120 L218 128 Q226 140 202 148 L178 148 C176 166 168 178 156 188 L184 188 Q200 188 200 208 Z M180 109 A8 8 0 1 0 180 125 A8 8 0 1 0 180 109 Z"/></svg>

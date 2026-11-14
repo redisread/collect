@@ -40,7 +40,7 @@ export default function RegisterForm() {
   return (
     <div className="min-h-dvh flex items-center justify-center bg-[var(--bg-main)]">
       <div className="w-full max-w-sm px-6 py-8">
-        <img src="/collect.svg" width="48" height="48" alt="" className="mx-auto mb-4" />
+        <img src="/collect-logo.png" width="48" height="48" alt="" className="mx-auto mb-4" />
         <h1 className="text-2xl font-bold text-center mb-2 text-[var(--text-primary)]">Collect</h1>
         <p className="text-sm text-center text-[var(--text-tertiary)] mb-8">创建新账号</p>
 

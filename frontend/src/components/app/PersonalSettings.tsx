@@ -55,7 +55,7 @@ export function PersonalSettings() {
     <div className="mx-auto max-w-5xl px-5 py-5 sm:px-8 sm:py-10">
       <a href="/" onClick={navigateWithinReader} className="inline-flex min-h-11 items-center gap-2 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)]">← 返回阅读</a>
       <header className="mt-4 mb-6 flex items-center gap-4">
-        <img src="/collect.svg" width="40" height="40" alt="" />
+        <img src="/collect-logo.png" width="40" height="40" alt="" />
         <h1 ref={heading} tabIndex={-1} className="text-2xl font-semibold tracking-tight outline-none">个人设置</h1>
       </header>
       <div className="grid gap-8 md:grid-cols-[180px_minmax(0,1fr)]">
