@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils/cn";
 interface ReadingProgressProps {
 	contentRef: React.RefObject<HTMLDivElement | null>;
 	articleId: string;
+  restoreSavedPosition?: boolean;
 }
 
 // 节流函数
@@ -19,7 +20,7 @@ function throttle(fn: (id: string, progress: number) => void, delay: number) {
 	};
 }
 
-export function ReadingProgress({ contentRef, articleId }: ReadingProgressProps) {
+export function ReadingProgress({ contentRef, articleId, restoreSavedPosition = true }: ReadingProgressProps) {
 	const [progress, setProgress] = useState(0);
 	const [showProgress, setShowProgress] = useState(false);
 	const { saveReadingProgress, getReadingProgress } = useArticleStore();
@@ -66,7 +67,7 @@ export function ReadingProgress({ contentRef, articleId }: ReadingProgressProps)
 
 	// 恢复上次阅读位置
 	useEffect(() => {
-		if (!contentRef.current || !articleId) return;
+		if (!restoreSavedPosition || !contentRef.current || !articleId) return;
 
 		const restoreProgress = async () => {
 			const savedProgress = await getReadingProgress(articleId);
@@ -82,7 +83,7 @@ export function ReadingProgress({ contentRef, articleId }: ReadingProgressProps)
 		};
 
 		restoreProgress();
-	}, [articleId, contentRef, getReadingProgress]);
+	}, [articleId, contentRef, getReadingProgress, restoreSavedPosition]);
 
 	// 点击进度条跳转到对应位置
 	const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {

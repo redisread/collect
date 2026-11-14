@@ -109,7 +109,7 @@ export function SearchBox() {
 	const selectAndClose = useCallback(
 		(articleId: string) => {
 			const { selectArticle } = useArticleStore.getState();
-			selectArticle(articleId);
+			selectArticle(articleId, "search");
 			setActiveColumn("detail");
 			setShowResults(false);
 			setSelectedIndex(-1);
